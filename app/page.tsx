@@ -30,12 +30,23 @@ const statusLabels: Record<string, string> = {
 export default function Home() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     fetch('/api/orders')
       .then(r => r.json())
-      .then(data => { setOrders(data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(data => {
+        if (Array.isArray(data)) {
+          setOrders(data);
+        } else {
+          setError(data.error || 'שגיאה לא ידועה');
+        }
+        setLoading(false);
+      })
+      .catch(() => {
+        setError('שגיאת רשת');
+        setLoading(false);
+      });
   }, []);
 
   return (
@@ -43,11 +54,12 @@ export default function Home() {
       <h1 className="text-3xl font-bold text-yellow-400 mb-6">
         📦 לוח בקרה — הזמנות
       </h1>
-      {loading ? (
-        <p className="text-gray-400">טוען הזמנות...</p>
-      ) : orders.length === 0 ? (
+      {loading && <p className="text-gray-400">טוען הזמנות...</p>}
+      {error && <p className="text-red-400">שגיאה: {error}</p>}
+      {!loading && !error && orders.length === 0 && (
         <p className="text-gray-400">אין הזמנות עדיין</p>
-      ) : (
+      )}
+      {!loading && !error && orders.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
