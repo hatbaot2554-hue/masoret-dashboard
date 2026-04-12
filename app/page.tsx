@@ -40,26 +40,25 @@ export default function Dashboard() {
 
   useEffect(() => { fetchOrders(); }, []);
 
-  const updateStatus = async (id: string, status: string) => {
+  const updateStatus = async (id: string, newStatus: string) => {
     setUpdating(true);
-    await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) });
     await fetchOrders();
     setUpdating(false);
-    if (selected) setSelected({ ...selected, status });
+    if (selected) setSelected(prev => prev ? { ...prev, status: newStatus } : null);
   };
 
   const stats = {
     total: orders.length,
     pending: orders.filter(o => o.status === 'pending').length,
-    revenue: orders.reduce((s, o) => s + Number(o.total_price), 0),
+    revenue: orders.reduce((sum, o) => sum + Number(o.total_price), 0),
     delivered: orders.filter(o => o.status === 'delivered').length,
   };
 
-  const S = { background: '#0A0E1A', color: '#fff', fontFamily: 'Heebo, sans-serif', minHeight: '100vh' };
+  const pageStyle = { background: '#0A0E1A', color: '#fff', fontFamily: 'Heebo, sans-serif', minHeight: '100vh' };
 
   if (view === 'detail' && selected) return (
-    <div dir="rtl" style={S}>
-      {/* Header */}
+    <div dir="rtl" style={pageStyle}>
       <div style={{ background: '#111827', borderBottom: '1px solid #1F2937', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
         <button onClick={() => { setView('list'); setSelected(null); }} style={{ background: '#1F2937', border: '1px solid #374151', color: '#9CA3AF', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>
           → חזור לרשימה
@@ -71,16 +70,15 @@ export default function Dashboard() {
       </div>
 
       <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-        {/* פרטי לקוח */}
         <div style={{ background: '#111827', borderRadius: '12px', padding: '20px', border: '1px solid #1F2937' }}>
           <h3 style={{ color: '#F59E0B', marginTop: 0, fontSize: '15px' }}>👤 פרטי לקוח</h3>
-          {[
+          {([
             ['שם', selected.customer_name],
             ['טלפון', selected.customer_phone],
             ['אימייל', selected.customer_email],
             ['כתובת', selected.customer_address],
             ['תאריך', new Date(selected.created_at).toLocaleDateString('he-IL')],
-          ].map(([k, v]) => (
+          ] as [string, string][]).map(([k, v]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #1F2937' }}>
               <span style={{ color: '#6B7280', fontSize: '13px' }}>{k}</span>
               <span style={{ fontSize: '13px' }}>{v}</span>
@@ -89,7 +87,6 @@ export default function Dashboard() {
           {selected.notes && <p style={{ color: '#9CA3AF', fontSize: '13px', marginTop: '12px' }}>הערות: {selected.notes}</p>}
         </div>
 
-        {/* סטטוס תשלום */}
         <div style={{ background: '#111827', borderRadius: '12px', padding: '20px', border: '1px solid #1F2937' }}>
           <h3 style={{ color: '#F59E0B', marginTop: 0, fontSize: '15px' }}>💳 תשלום וסטטוס</h3>
           <div style={{ marginBottom: '16px' }}>
@@ -111,7 +108,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* מוצרים */}
         <div style={{ background: '#111827', borderRadius: '12px', padding: '20px', border: '1px solid #1F2937', gridColumn: '1 / -1' }}>
           <h3 style={{ color: '#F59E0B', marginTop: 0, fontSize: '15px' }}>📦 מוצרים</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -123,8 +119,8 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {(Array.isArray(selected.items) ? selected.items : []).map((item, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #1F2937' }}>
+              {(Array.isArray(selected.items) ? selected.items : []).map((item, idx) => (
+                <tr key={idx} style={{ borderBottom: '1px solid #1F2937' }}>
                   <td style={{ padding: '12px 16px', fontSize: '13px' }}>{item.name || item.sourceProductId || 'מוצר'}</td>
                   <td style={{ padding: '12px 16px', fontSize: '13px', color: '#9CA3AF' }}>{item.quantity || 1}</td>
                   <td style={{ padding: '12px 16px', fontSize: '13px', color: '#9CA3AF' }}>₪{item.price || 0}</td>
@@ -139,7 +135,7 @@ export default function Dashboard() {
   );
 
   return (
-    <div dir="rtl" style={S}>
+    <div dir="rtl" style={pageStyle}>
       <div style={{ background: '#111827', borderBottom: '1px solid #1F2937', padding: '16px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span style={{ fontSize: '24px' }}>📦</span>
@@ -158,8 +154,8 @@ export default function Dashboard() {
             { label: 'ממתינות לטיפול', value: stats.pending, icon: '⏳', color: '#F59E0B' },
             { label: 'נמסרו', value: stats.delivered, icon: '✅', color: '#10B981' },
             { label: 'סה"כ הכנסות', value: `₪${stats.revenue.toLocaleString()}`, icon: '💰', color: '#10B981' },
-          ].map((s, i) => (
-            <div key={i} style={{ background: '#111827', border: `1px solid ${s.color}33`, borderRadius: '12px', padding: '16px' }}>
+          ].map((s) => (
+            <div key={s.label} style={{ background: '#111827', border: `1px solid ${s.color}33`, borderRadius: '12px', padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <p style={{ color: '#6B7280', fontSize: '12px', margin: '0 0 6px' }}>{s.label}</p>
@@ -172,7 +168,7 @@ export default function Dashboard() {
         </div>
 
         <div style={{ background: '#111827', borderRadius: '12px', border: '1px solid #1F2937', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 24px', borderBottom: '1px solid #1F2937', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid #1F2937' }}>
             <h2 style={{ margin: 0, fontSize: '15px', color: '#F59E0B' }}>📋 רשימת הזמנות ({orders.length})</h2>
           </div>
           {loading ? (
@@ -189,7 +185,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {orders.map((order, i) => (
+                {orders.map((order) => (
                   <tr key={order.id} style={{ borderBottom: '1px solid #1F2937', cursor: 'pointer' }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#1F2937')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
