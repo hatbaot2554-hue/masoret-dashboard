@@ -11,7 +11,7 @@ type Order = {
   total_price: number;
   status: string;
   payment_status: string;
-  items: any[];
+  items: unknown[];
 };
 
 const STATUS_COLORS: Record<string, string> = {
