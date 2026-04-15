@@ -13,6 +13,10 @@ type Order = {
 const SC: Record<string, string> = { pending:'#F59E0B', confirmed:'#3B82F6', shipped:'#8B5CF6', delivered:'#10B981', cancelled:'#EF4444' };
 const SL: Record<string, string> = { pending:'ממתין לטיפול', confirmed:'אושר', shipped:'נשלח', delivered:'נמסר', cancelled:'בוטל' };
 
+function formatOrderId(id: string) {
+  return String(id).replace(/\D/g, '').padStart(5, '0');
+}
+
 const sourceLabel = (s: string) => {
   if (!s || s === 'direct') return '🔗 ישיר';
   if (s.includes('google')) return '🔍 Google';
@@ -65,13 +69,12 @@ export default function Dashboard() {
     <div dir="rtl" style={PS}>
       <div style={{ background: '#111827', borderBottom: '1px solid #1F2937', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
         <button onClick={() => { setView('list'); setSelected(null); }} style={{ background: '#1F2937', border: '1px solid #374151', color: '#9CA3AF', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>→ חזור</button>
-        <h1 style={{ margin: 0, color: '#F59E0B', fontSize: '18px' }}>הזמנה #{selected.id.slice(-6).toUpperCase()}</h1>
+        <h1 style={{ margin: 0, color: '#F59E0B', fontSize: '18px' }}>הזמנה #{formatOrderId(selected.id)}</h1>
         <span style={{ background: SC[selected.status] + '22', color: SC[selected.status], padding: '4px 12px', borderRadius: '20px', fontSize: '13px', border: `1px solid ${SC[selected.status]}44` }}>{SL[selected.status]}</span>
         <span style={{ color: '#6B7280', fontSize: '13px', marginRight: 'auto' }}>{sourceLabel(selected.utm_source || selected.source)}</span>
       </div>
 
       <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-        {/* פרטי לקוח */}
         <div style={{ background: '#111827', borderRadius: '12px', padding: '20px', border: '1px solid #1F2937' }}>
           <h3 style={{ color: '#F59E0B', marginTop: 0, fontSize: '15px' }}>👤 פרטי לקוח</h3>
           {([['שם', selected.customer_name], ['טלפון', selected.customer_phone], ['אימייל', selected.customer_email], ['כתובת', selected.customer_address], ['תאריך', new Date(selected.created_at).toLocaleDateString('he-IL')], ['מקור', sourceLabel(selected.utm_source || selected.source)]] as [string,string][]).map(([k,v]) => (
@@ -83,7 +86,6 @@ export default function Dashboard() {
           {selected.notes && <p style={{ color: '#9CA3AF', fontSize: '13px', marginTop: '12px' }}>הערות: {selected.notes}</p>}
         </div>
 
-        {/* כספים וסטטוס */}
         <div style={{ background: '#111827', borderRadius: '12px', padding: '20px', border: '1px solid #1F2937' }}>
           <h3 style={{ color: '#F59E0B', marginTop: 0, fontSize: '15px' }}>💰 כספים וסטטוס</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '20px' }}>
@@ -107,7 +109,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* מוצרים */}
         <div style={{ background: '#111827', borderRadius: '12px', padding: '20px', border: '1px solid #1F2937', gridColumn: '1 / -1' }}>
           <h3 style={{ color: '#F59E0B', marginTop: 0, fontSize: '15px' }}>📦 מוצרים</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -180,7 +181,6 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* חיפוש וסינון */}
         <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 חיפוש לפי שם / טלפון / מייל..."
             style={{ flex: 1, background: '#111827', border: '1px solid #1F2937', color: '#fff', padding: '10px 16px', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
@@ -213,7 +213,7 @@ export default function Dashboard() {
                   <tr key={order.id} style={{ borderBottom: '1px solid #1F2937', cursor: 'pointer' }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#1F2937')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding: '12px 16px', fontSize: '12px', color: '#6B7280' }}>#{order.id.slice(-6).toUpperCase()}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '12px', color: '#6B7280' }}>#{formatOrderId(order.id)}</td>
                     <td style={{ padding: '12px 16px', fontSize: '12px', color: '#9CA3AF' }}>{new Date(order.created_at).toLocaleDateString('he-IL')}</td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ fontSize: '13px', fontWeight: '600' }}>{order.customer_name}</div>
