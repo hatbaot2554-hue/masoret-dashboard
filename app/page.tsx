@@ -7,7 +7,7 @@ type Order = {
   customer_email: string; customer_address: string; total_price: number;
   cost_price: number; profit: number; status: string; payment_status: string;
   payment_method: string; notes: string; source: string; utm_source: string;
-  items: OrderItem[];
+  items: OrderItem[]; external_order_id?: string;
 };
 
 const SC: Record<string, string> = { pending:'#F59E0B', confirmed:'#3B82F6', shipped:'#8B5CF6', delivered:'#10B981', cancelled:'#EF4444' };
@@ -70,6 +70,9 @@ export default function Dashboard() {
       <div style={{ background: '#111827', borderBottom: '1px solid #1F2937', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
         <button onClick={() => { setView('list'); setSelected(null); }} style={{ background: '#1F2937', border: '1px solid #374151', color: '#9CA3AF', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>→ חזור</button>
         <h1 style={{ margin: 0, color: '#F59E0B', fontSize: '18px' }}>הזמנה #{formatOrderId(selected.id)}</h1>
+        {selected.external_order_id && (
+          <span style={{ color: '#6B7280', fontSize: '13px' }}>מס׳ באתר הקיים: #{selected.external_order_id}</span>
+        )}
         <span style={{ background: SC[selected.status] + '22', color: SC[selected.status], padding: '4px 12px', borderRadius: '20px', fontSize: '13px', border: `1px solid ${SC[selected.status]}44` }}>{SL[selected.status]}</span>
         <span style={{ color: '#6B7280', fontSize: '13px', marginRight: 'auto' }}>{sourceLabel(selected.utm_source || selected.source)}</span>
       </div>
@@ -203,7 +206,7 @@ export default function Dashboard() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#0F172A' }}>
-                  {['#', 'תאריך', 'לקוח', 'מוצרים', 'מחיר', 'עלות', 'רווח', 'מקור', 'סטטוס', 'פעולות'].map(h => (
+                  {['# שלנו', '# קיים', 'תאריך', 'לקוח', 'מוצרים', 'מחיר', 'עלות', 'רווח', 'מקור', 'סטטוס', 'פעולות'].map(h => (
                     <th key={h} style={{ padding: '12px 16px', textAlign: 'right', fontSize: '12px', color: '#F59E0B', borderBottom: '1px solid #1F2937' }}>{h}</th>
                   ))}
                 </tr>
@@ -213,7 +216,10 @@ export default function Dashboard() {
                   <tr key={order.id} style={{ borderBottom: '1px solid #1F2937', cursor: 'pointer' }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#1F2937')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding: '12px 16px', fontSize: '12px', color: '#6B7280' }}>#{formatOrderId(order.id)}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '12px', color: '#F59E0B', fontWeight: '700' }}>#{formatOrderId(order.id)}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '12px', color: '#6B7280' }}>
+                      {order.external_order_id ? '#' + order.external_order_id : '—'}
+                    </td>
                     <td style={{ padding: '12px 16px', fontSize: '12px', color: '#9CA3AF' }}>{new Date(order.created_at).toLocaleDateString('he-IL')}</td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ fontSize: '13px', fontWeight: '600' }}>{order.customer_name}</div>
