@@ -1,3 +1,23 @@
+// הוסף state:
+const [authed, setAuthed] = useState(false)
+const [pass, setPass] = useState('')
+const DASHBOARD_PASSWORD = process.env.NEXT_PUBLIC_DASHBOARD_PASSWORD || 'masoret2024'
+
+// הוסף לפני ה-return הראשי:
+if (!authed) {
+  return (
+    <div style={{ maxWidth: '400px', margin: '120px auto', padding: '0 24px', textAlign: 'center' }}>
+      <h2 style={{ fontFamily: 'serif', fontSize: '28px', marginBottom: '24px' }}>לוח בקרה</h2>
+      <input type="password" value={pass} onChange={e => setPass(e.target.value)}
+        placeholder="סיסמה" onKeyDown={e => { if (e.key === 'Enter' && pass === DASHBOARD_PASSWORD) setAuthed(true) }}
+        style={{ width: '100%', padding: '12px', border: '1px solid #ddd', fontSize: '16px', marginBottom: '12px', textAlign: 'center' }} />
+      <button onClick={() => { if (pass === DASHBOARD_PASSWORD) setAuthed(true) }}
+        style={{ width: '100%', padding: '12px', background: '#1A2332', color: '#C9A84C', border: 'none', fontSize: '16px', cursor: 'pointer' }}>
+        כניסה
+      </button>
+    </div>
+  )
+}
 'use client';
 import { useEffect, useState } from 'react';
 
