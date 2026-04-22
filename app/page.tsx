@@ -1,23 +1,3 @@
-// הוסף state:
-const [authed, setAuthed] = useState(false)
-const [pass, setPass] = useState('')
-const DASHBOARD_PASSWORD = process.env.NEXT_PUBLIC_DASHBOARD_PASSWORD || 'masoret2024'
-
-// הוסף לפני ה-return הראשי:
-if (!authed) {
-  return (
-    <div style={{ maxWidth: '400px', margin: '120px auto', padding: '0 24px', textAlign: 'center' }}>
-      <h2 style={{ fontFamily: 'serif', fontSize: '28px', marginBottom: '24px' }}>לוח בקרה</h2>
-      <input type="password" value={pass} onChange={e => setPass(e.target.value)}
-        placeholder="סיסמה" onKeyDown={e => { if (e.key === 'Enter' && pass === DASHBOARD_PASSWORD) setAuthed(true) }}
-        style={{ width: '100%', padding: '12px', border: '1px solid #ddd', fontSize: '16px', marginBottom: '12px', textAlign: 'center' }} />
-      <button onClick={() => { if (pass === DASHBOARD_PASSWORD) setAuthed(true) }}
-        style={{ width: '100%', padding: '12px', background: '#1A2332', color: '#C9A84C', border: 'none', fontSize: '16px', cursor: 'pointer' }}>
-        כניסה
-      </button>
-    </div>
-  )
-}
 'use client';
 import { useEffect, useState } from 'react';
 
@@ -46,7 +26,11 @@ const sourceLabel = (s: string) => {
   return `📣 ${s}`;
 };
 
+const DASHBOARD_PASSWORD = process.env.NEXT_PUBLIC_DASHBOARD_PASSWORD || 'masoret2024'
+
 export default function Dashboard() {
+  const [authed, setAuthed] = useState(false)
+  const [pass, setPass] = useState('')
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Order | null>(null);
@@ -60,7 +44,7 @@ export default function Dashboard() {
     fetch('/api/orders').then(r => r.json()).then(data => { if (Array.isArray(data)) setOrders(data); setLoading(false); }).catch(() => setLoading(false));
   };
 
-  useEffect(() => { fetchOrders(); }, []);
+  useEffect(() => { if (authed) fetchOrders(); }, [authed]);
 
   const updateStatus = async (id: string, newStatus: string) => {
     setUpdating(true);
@@ -84,6 +68,25 @@ export default function Dashboard() {
   };
 
   const PS = { background: '#0A0E1A', color: '#fff', fontFamily: 'Heebo, sans-serif', minHeight: '100vh' };
+
+  if (!authed) {
+    return (
+      <div dir="rtl" style={{ ...PS, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ maxWidth: '400px', width: '100%', padding: '0 24px', textAlign: 'center' }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔐</div>
+          <h2 style={{ fontFamily: 'serif', fontSize: '28px', marginBottom: '24px', color: '#F59E0B' }}>לוח בקרה</h2>
+          <input type="password" value={pass} onChange={e => setPass(e.target.value)}
+            placeholder="סיסמה"
+            onKeyDown={e => { if (e.key === 'Enter' && pass === DASHBOARD_PASSWORD) setAuthed(true) }}
+            style={{ width: '100%', padding: '12px', border: '1px solid #374151', background: '#111827', color: '#fff', fontSize: '16px', marginBottom: '12px', textAlign: 'center', outline: 'none', borderRadius: '8px', boxSizing: 'border-box' }} />
+          <button onClick={() => { if (pass === DASHBOARD_PASSWORD) setAuthed(true) }}
+            style={{ width: '100%', padding: '12px', background: '#F59E0B', color: '#0A0E1A', border: 'none', fontSize: '16px', cursor: 'pointer', borderRadius: '8px', fontWeight: '700' }}>
+            כניסה
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (view === 'detail' && selected) return (
     <div dir="rtl" style={PS}>
@@ -181,7 +184,10 @@ export default function Dashboard() {
             <p style={{ fontSize: '11px', color: '#6B7280', margin: 0 }}>לוח בקרה</p>
           </div>
         </div>
-        <button onClick={fetchOrders} style={{ background: '#1F2937', border: '1px solid #374151', color: '#9CA3AF', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>🔄 רענן</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={fetchOrders} style={{ background: '#1F2937', border: '1px solid #374151', color: '#9CA3AF', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>🔄 רענן</button>
+          <button onClick={() => setAuthed(false)} style={{ background: '#1F2937', border: '1px solid #374151', color: '#9CA3AF', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>🔒 התנתק</button>
+        </div>
       </div>
 
       <div style={{ padding: '24px' }}>
