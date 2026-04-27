@@ -26,6 +26,86 @@ const sourceLabel = (s: string) => {
   return `📣 ${s}`;
 };
 
+// Eye icon component
+function EyeIcon({ visible, onClick }: { visible: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      tabIndex={-1}
+      style={{
+        position: 'absolute',
+        left: '12px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        color: '#9CA3AF',
+        padding: '4px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+      aria-label={visible ? 'הסתר סיסמה' : 'הצג סיסמה'}
+    >
+      {visible ? (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+          <line x1="1" y1="1" x2="23" y2="23"/>
+        </svg>
+      ) : (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+      )}
+    </button>
+  );
+}
+
+// Password input wrapper
+function PasswordInput({
+  value, onChange, placeholder, disabled, onKeyDown, autoFocus, centered
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  disabled?: boolean;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  autoFocus?: boolean;
+  centered?: boolean;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div style={{ position: 'relative', marginBottom: '10px' }}>
+      <input
+        type={visible ? 'text' : 'password'}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        onKeyDown={onKeyDown}
+        autoFocus={autoFocus}
+        style={{
+          width: '100%',
+          padding: centered ? '14px 44px 14px 44px' : '12px 40px 12px 12px',
+          border: '1px solid #374151',
+          background: '#0F172A',
+          color: '#fff',
+          fontSize: centered ? '16px' : '14px',
+          textAlign: centered ? 'center' : 'right',
+          outline: 'none',
+          borderRadius: '8px',
+          boxSizing: 'border-box',
+          direction: 'rtl'
+        }}
+      />
+      <EyeIcon visible={visible} onClick={() => setVisible(v => !v)} />
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [authed, setAuthed] = useState(false);
   const [pass, setPass] = useState('');
@@ -172,7 +252,6 @@ export default function Dashboard() {
 
   const modalOverlay: React.CSSProperties = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
   const modalBox: React.CSSProperties = { background: '#111827', border: '1px solid #1F2937', borderRadius: '12px', padding: '28px', maxWidth: '420px', width: '100%' };
-  const inputStyle: React.CSSProperties = { width: '100%', padding: '12px', border: '1px solid #374151', background: '#0F172A', color: '#fff', fontSize: '14px', marginBottom: '10px', textAlign: 'right', outline: 'none', borderRadius: '8px', boxSizing: 'border-box', direction: 'rtl' };
   const primaryBtn: React.CSSProperties = { padding: '12px 20px', background: '#F59E0B', color: '#0A0E1A', border: 'none', fontSize: '14px', cursor: 'pointer', borderRadius: '8px', fontWeight: 700 };
   const secondaryBtn: React.CSSProperties = { padding: '12px 20px', background: '#1F2937', color: '#9CA3AF', border: '1px solid #374151', fontSize: '14px', cursor: 'pointer', borderRadius: '8px' };
 
@@ -183,10 +262,14 @@ export default function Dashboard() {
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔐</div>
           <h2 style={{ fontFamily: 'serif', fontSize: '28px', marginBottom: '24px', color: '#F59E0B' }}>לוח בקרה</h2>
 
-          <input type="password" value={pass} onChange={e => setPass(e.target.value)}
-            placeholder="סיסמה" disabled={loginLoading}
+          <PasswordInput
+            value={pass}
+            onChange={setPass}
+            placeholder="סיסמה"
+            disabled={loginLoading}
             onKeyDown={e => { if (e.key === 'Enter') handleLogin(); }}
-            style={{ ...inputStyle, textAlign: 'center', padding: '14px', fontSize: '16px' }} />
+            centered
+          />
 
           {loginError && (
             <div style={{ background: '#7F1D1D33', border: '1px solid #EF444466', color: '#FCA5A5', padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
@@ -216,9 +299,14 @@ export default function Dashboard() {
             <div style={modalBox} onClick={e => e.stopPropagation()}>
               <h3 style={{ color: '#F59E0B', marginTop: 0, marginBottom: '8px', fontSize: '18px' }}>🔍 שחזור סיסמה</h3>
               <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '16px' }}>הזן סיסמת מנהל כדי לקבל מידע על הסיסמה הנוכחית</p>
-              <input type="password" value={recoverAdminPwd} onChange={e => setRecoverAdminPwd(e.target.value)}
-                placeholder="סיסמת מנהל" style={inputStyle} disabled={recoverLoading}
-                onKeyDown={e => { if (e.key === 'Enter') handleRecoverPassword(); }} />
+
+              <PasswordInput
+                value={recoverAdminPwd}
+                onChange={setRecoverAdminPwd}
+                placeholder="סיסמת מנהל"
+                disabled={recoverLoading}
+                onKeyDown={e => { if (e.key === 'Enter') handleRecoverPassword(); }}
+              />
 
               {recoverMsg && (
                 <div style={{
@@ -247,12 +335,10 @@ export default function Dashboard() {
             <div style={modalBox} onClick={e => e.stopPropagation()}>
               <h3 style={{ color: '#F59E0B', marginTop: 0, marginBottom: '8px', fontSize: '18px' }}>🔑 שינוי סיסמת גישה</h3>
               <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '16px' }}>נדרשת סיסמת מנהל לאישור השינוי</p>
-              <input type="password" value={adminPwd} onChange={e => setAdminPwd(e.target.value)}
-                placeholder="סיסמת מנהל" style={inputStyle} disabled={changeLoading} />
-              <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)}
-                placeholder="סיסמה חדשה (לפחות 6 תווים)" style={inputStyle} disabled={changeLoading} />
-              <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)}
-                placeholder="אישור סיסמה חדשה" style={inputStyle} disabled={changeLoading} />
+
+              <PasswordInput value={adminPwd} onChange={setAdminPwd} placeholder="סיסמת מנהל" disabled={changeLoading} />
+              <PasswordInput value={newPwd} onChange={setNewPwd} placeholder="סיסמה חדשה (לפחות 6 תווים)" disabled={changeLoading} />
+              <PasswordInput value={confirmPwd} onChange={setConfirmPwd} placeholder="אישור סיסמה חדשה" disabled={changeLoading} />
 
               {changeErr && (
                 <div style={{ background: '#7F1D1D33', border: '1px solid #EF444466', color: '#FCA5A5', padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
@@ -476,12 +562,10 @@ export default function Dashboard() {
           <div style={modalBox} onClick={e => e.stopPropagation()}>
             <h3 style={{ color: '#F59E0B', marginTop: 0, marginBottom: '8px', fontSize: '18px' }}>🔑 שינוי סיסמת גישה</h3>
             <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '16px' }}>נדרשת סיסמת מנהל לאישור השינוי</p>
-            <input type="password" value={adminPwd} onChange={e => setAdminPwd(e.target.value)}
-              placeholder="סיסמת מנהל" style={inputStyle} disabled={changeLoading} />
-            <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)}
-              placeholder="סיסמה חדשה (לפחות 6 תווים)" style={inputStyle} disabled={changeLoading} />
-            <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)}
-              placeholder="אישור סיסמה חדשה" style={inputStyle} disabled={changeLoading} />
+
+            <PasswordInput value={adminPwd} onChange={setAdminPwd} placeholder="סיסמת מנהל" disabled={changeLoading} />
+            <PasswordInput value={newPwd} onChange={setNewPwd} placeholder="סיסמה חדשה (לפחות 6 תווים)" disabled={changeLoading} />
+            <PasswordInput value={confirmPwd} onChange={setConfirmPwd} placeholder="אישור סיסמה חדשה" disabled={changeLoading} />
 
             {changeErr && (
               <div style={{ background: '#7F1D1D33', border: '1px solid #EF444466', color: '#FCA5A5', padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
