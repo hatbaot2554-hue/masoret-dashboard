@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const autoSubmitted = searchParams.get('auto_submitted')
 
     let query = 'SELECT * FROM orders'
-    const params: any[] = []
+    const params: string[] = []
     const conditions: string[] = []
 
     if (status) {
@@ -41,14 +41,27 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
+    const body = await request.json() as {
+      customer_name: string
+      customer_phone: string
+      customer_email: string
+      customer_address: string
+      items: unknown
+      total_price: number
+      cost_price: number
+      profit: number
+      payment_method: string
+      notes: string
+      source: string
+      utm_source: string
+    }
+
     const {
       customer_name, customer_phone, customer_email, customer_address,
       items, total_price, cost_price, profit, payment_method,
       notes, source, utm_source
     } = body
 
-    // יצירת טבלה אם לא קיימת (כולל עמודות חדשות)
     await pool.query(`
       ALTER TABLE orders
       ADD COLUMN IF NOT EXISTS auto_submitted BOOLEAN DEFAULT FALSE,
@@ -79,7 +92,14 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json()
+    const body = await request.json() as {
+      id: string
+      auto_submitted?: boolean
+      checkout_url?: string
+      external_order_id?: string
+      status?: string
+    }
+
     const { id, auto_submitted, checkout_url, external_order_id, status } = body
 
     if (!id) {
@@ -87,33 +107,33 @@ export async function PATCH(request: Request) {
     }
 
     const updates: string[] = []
-    const params: any[] = []
+    const values: (string | boolean)[] = []
 
     if (auto_submitted !== undefined) {
-      params.push(auto_submitted)
-      updates.push(`auto_submitted = $${params.length}`)
+      values.push(auto_submitted)
+      updates.push(`auto_submitted = $${values.length}`)
     }
     if (checkout_url !== undefined) {
-      params.push(checkout_url)
-      updates.push(`checkout_url = $${params.length}`)
+      values.push(checkout_url)
+      updates.push(`checkout_url = $${values.length}`)
     }
     if (external_order_id !== undefined) {
-      params.push(external_order_id)
-      updates.push(`external_order_id = $${params.length}`)
+      values.push(external_order_id)
+      updates.push(`external_order_id = $${values.length}`)
     }
     if (status !== undefined) {
-      params.push(status)
-      updates.push(`status = $${params.length}`)
+      values.push(status)
+      updates.push(`status = $${values.length}`)
     }
 
     if (updates.length === 0) {
       return NextResponse.json({ error: 'אין מה לעדכן' }, { status: 400 })
     }
 
-    params.push(id)
+    values.push(id)
     const result = await pool.query(
-      `UPDATE orders SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING *`,
-      params
+      `UPDATE orders SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`,
+      values
     )
 
     return NextResponse.json(result.rows[0])
