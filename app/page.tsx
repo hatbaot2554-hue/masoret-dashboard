@@ -26,11 +26,29 @@ const sourceLabel = (s: string) => {
   return `📣 ${s}`;
 };
 
-const DASHBOARD_PASSWORD = process.env.NEXT_PUBLIC_DASHBOARD_PASSWORD || 'masoret2024'
-
 export default function Dashboard() {
-  const [authed, setAuthed] = useState(false)
-  const [pass, setPass] = useState('')
+  const [authed, setAuthed] = useState(false);
+  const [pass, setPass] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  // Modal states
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showRecoverPassword, setShowRecoverPassword] = useState(false);
+
+  // Change password form
+  const [adminPwd, setAdminPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [changeMsg, setChangeMsg] = useState('');
+  const [changeErr, setChangeErr] = useState('');
+  const [changeLoading, setChangeLoading] = useState(false);
+
+  // Recover password form
+  const [recoverAdminPwd, setRecoverAdminPwd] = useState('');
+  const [recoverMsg, setRecoverMsg] = useState('');
+  const [recoverLoading, setRecoverLoading] = useState(false);
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Order | null>(null);
@@ -39,12 +57,119 @@ export default function Dashboard() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
+  // Check session token on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const token = sessionStorage.getItem('dashboard_token');
+      if (token) setAuthed(true);
+    }
+  }, []);
+
   const fetchOrders = () => {
     setLoading(true);
     fetch('/api/orders').then(r => r.json()).then(data => { if (Array.isArray(data)) setOrders(data); setLoading(false); }).catch(() => setLoading(false));
   };
 
   useEffect(() => { if (authed) fetchOrders(); }, [authed]);
+
+  const handleLogin = async () => {
+    if (!pass) { setLoginError('יש להזין סיסמה'); return; }
+    setLoginError('');
+    setLoginLoading(true);
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'login', password: pass })
+      });
+      const data = await res.json();
+      if (data.success) {
+        sessionStorage.setItem('dashboard_token', data.token);
+        setAuthed(true);
+        setPass('');
+      } else {
+        setLoginError(data.error || 'סיסמה שגויה');
+      }
+    } catch {
+      setLoginError('שגיאת חיבור לשרת');
+    }
+    setLoginLoading(false);
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('dashboard_token');
+    setAuthed(false);
+  };
+
+  const handleChangePassword = async () => {
+    setChangeMsg('');
+    setChangeErr('');
+
+    if (!adminPwd || !newPwd || !confirmPwd) {
+      setChangeErr('יש למלא את כל השדות');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      setChangeErr('הסיסמאות החדשות אינן תואמות');
+      return;
+    }
+    if (newPwd.length < 6) {
+      setChangeErr('הסיסמה חייבת להיות לפחות 6 תווים');
+      return;
+    }
+
+    setChangeLoading(true);
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'change_password',
+          adminPassword: adminPwd,
+          newPassword: newPwd
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setChangeMsg('✅ הסיסמה שונתה בהצלחה!');
+        setAdminPwd(''); setNewPwd(''); setConfirmPwd('');
+        setTimeout(() => {
+          setShowChangePassword(false);
+          setChangeMsg('');
+        }, 2000);
+      } else {
+        setChangeErr(data.error || 'שגיאה בשינוי הסיסמה');
+      }
+    } catch {
+      setChangeErr('שגיאת חיבור לשרת');
+    }
+    setChangeLoading(false);
+  };
+
+  const handleRecoverPassword = async () => {
+    setRecoverMsg('');
+    if (!recoverAdminPwd) { setRecoverMsg('❌ יש להזין סיסמת מנהל'); return; }
+    setRecoverLoading(true);
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get_current_password_for_admin',
+          adminPassword: recoverAdminPwd
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRecoverMsg('ℹ️ ' + data.message + '\n\n' + (data.hint || ''));
+      } else {
+        setRecoverMsg('❌ ' + (data.error || 'שגיאה'));
+      }
+    } catch {
+      setRecoverMsg('❌ שגיאת חיבור לשרת');
+    }
+    setRecoverLoading(false);
+  };
 
   const updateStatus = async (id: string, newStatus: string) => {
     setUpdating(true);
@@ -69,25 +194,128 @@ export default function Dashboard() {
 
   const PS = { background: '#0A0E1A', color: '#fff', fontFamily: 'Heebo, sans-serif', minHeight: '100vh' };
 
+  // Modal styles
+  const modalOverlay: React.CSSProperties = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
+  const modalBox: React.CSSProperties = { background: '#111827', border: '1px solid #1F2937', borderRadius: '12px', padding: '28px', maxWidth: '420px', width: '100%' };
+  const inputStyle: React.CSSProperties = { width: '100%', padding: '12px', border: '1px solid #374151', background: '#0F172A', color: '#fff', fontSize: '14px', marginBottom: '10px', textAlign: 'right', outline: 'none', borderRadius: '8px', boxSizing: 'border-box', direction: 'rtl' };
+  const primaryBtn: React.CSSProperties = { padding: '12px 20px', background: '#F59E0B', color: '#0A0E1A', border: 'none', fontSize: '14px', cursor: 'pointer', borderRadius: '8px', fontWeight: '700' };
+  const secondaryBtn: React.CSSProperties = { padding: '12px 20px', background: '#1F2937', color: '#9CA3AF', border: '1px solid #374151', fontSize: '14px', cursor: 'pointer', borderRadius: '8px' };
+
+  // === LOGIN PAGE ===
   if (!authed) {
     return (
       <div dir="rtl" style={{ ...PS, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ maxWidth: '400px', width: '100%', padding: '0 24px', textAlign: 'center' }}>
+        <div style={{ maxWidth: '420px', width: '100%', padding: '0 24px', textAlign: 'center' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔐</div>
           <h2 style={{ fontFamily: 'serif', fontSize: '28px', marginBottom: '24px', color: '#F59E0B' }}>לוח בקרה</h2>
+
           <input type="password" value={pass} onChange={e => setPass(e.target.value)}
-            placeholder="סיסמה"
-            onKeyDown={e => { if (e.key === 'Enter' && pass === DASHBOARD_PASSWORD) setAuthed(true) }}
-            style={{ width: '100%', padding: '12px', border: '1px solid #374151', background: '#111827', color: '#fff', fontSize: '16px', marginBottom: '12px', textAlign: 'center', outline: 'none', borderRadius: '8px', boxSizing: 'border-box' }} />
-          <button onClick={() => { if (pass === DASHBOARD_PASSWORD) setAuthed(true) }}
-            style={{ width: '100%', padding: '12px', background: '#F59E0B', color: '#0A0E1A', border: 'none', fontSize: '16px', cursor: 'pointer', borderRadius: '8px', fontWeight: '700' }}>
-            כניסה
+            placeholder="סיסמה" disabled={loginLoading}
+            onKeyDown={e => { if (e.key === 'Enter') handleLogin(); }}
+            style={{ ...inputStyle, textAlign: 'center', padding: '14px', fontSize: '16px' }} />
+
+          {loginError && (
+            <div style={{ background: '#7F1D1D33', border: '1px solid #EF444466', color: '#FCA5A5', padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
+              {loginError}
+            </div>
+          )}
+
+          <button onClick={handleLogin} disabled={loginLoading}
+            style={{ ...primaryBtn, width: '100%', padding: '14px', fontSize: '16px', opacity: loginLoading ? 0.6 : 1 }}>
+            {loginLoading ? 'מתחבר...' : 'כניסה'}
           </button>
+
+          <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+            <button onClick={() => { setShowRecoverPassword(true); setLoginError(''); }}
+              style={{ background: 'none', border: 'none', color: '#60A5FA', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+              שכחתי סיסמה
+            </button>
+            <button onClick={() => { setShowChangePassword(true); setLoginError(''); }}
+              style={{ background: 'none', border: 'none', color: '#60A5FA', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+              שינוי סיסמה
+            </button>
+          </div>
         </div>
+
+        {/* Recover Password Modal */}
+        {showRecoverPassword && (
+          <div style={modalOverlay} onClick={() => setShowRecoverPassword(false)}>
+            <div style={modalBox} onClick={e => e.stopPropagation()}>
+              <h3 style={{ color: '#F59E0B', marginTop: 0, marginBottom: '8px', fontSize: '18px' }}>🔍 שחזור סיסמה</h3>
+              <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '16px' }}>
+                הזן סיסמת מנהל כדי לקבל מידע על הסיסמה הנוכחית
+              </p>
+              <input type="password" value={recoverAdminPwd} onChange={e => setRecoverAdminPwd(e.target.value)}
+                placeholder="סיסמת מנהל" style={inputStyle} disabled={recoverLoading}
+                onKeyDown={e => { if (e.key === 'Enter') handleRecoverPassword(); }} />
+
+              {recoverMsg && (
+                <div style={{
+                  background: recoverMsg.startsWith('❌') ? '#7F1D1D33' : '#1E3A8A33',
+                  border: `1px solid ${recoverMsg.startsWith('❌') ? '#EF444466' : '#3B82F666'}`,
+                  color: recoverMsg.startsWith('❌') ? '#FCA5A5' : '#93C5FD',
+                  padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '13px', whiteSpace: 'pre-line'
+                }}>
+                  {recoverMsg}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                <button onClick={handleRecoverPassword} disabled={recoverLoading} style={{ ...primaryBtn, flex: 1 }}>
+                  {recoverLoading ? 'בודק...' : 'בדוק'}
+                </button>
+                <button onClick={() => { setShowRecoverPassword(false); setRecoverAdminPwd(''); setRecoverMsg(''); }}
+                  style={{ ...secondaryBtn, flex: 1 }}>
+                  ביטול
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Change Password Modal */}
+        {showChangePassword && (
+          <div style={modalOverlay} onClick={() => setShowChangePassword(false)}>
+            <div style={modalBox} onClick={e => e.stopPropagation()}>
+              <h3 style={{ color: '#F59E0B', marginTop: 0, marginBottom: '8px', fontSize: '18px' }}>🔑 שינוי סיסמת גישה</h3>
+              <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '16px' }}>
+                נדרשת סיסמת מנהל לאישור השינוי
+              </p>
+              <input type="password" value={adminPwd} onChange={e => setAdminPwd(e.target.value)}
+                placeholder="סיסמת מנהל" style={inputStyle} disabled={changeLoading} />
+              <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)}
+                placeholder="סיסמה חדשה (לפחות 6 תווים)" style={inputStyle} disabled={changeLoading} />
+              <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)}
+                placeholder="אישור סיסמה חדשה" style={inputStyle} disabled={changeLoading} />
+
+              {changeErr && (
+                <div style={{ background: '#7F1D1D33', border: '1px solid #EF444466', color: '#FCA5A5', padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
+                  {changeErr}
+                </div>
+              )}
+              {changeMsg && (
+                <div style={{ background: '#06402344', border: '1px solid #10B98166', color: '#6EE7B7', padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
+                  {changeMsg}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                <button onClick={handleChangePassword} disabled={changeLoading} style={{ ...primaryBtn, flex: 1 }}>
+                  {changeLoading ? 'משנה...' : 'שנה סיסמה'}
+                </button>
+                <button onClick={() => { setShowChangePassword(false); setAdminPwd(''); setNewPwd(''); setConfirmPwd(''); setChangeErr(''); setChangeMsg(''); }}
+                  style={{ ...secondaryBtn, flex: 1 }}>
+                  ביטול
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    )
+    );
   }
 
+  // === ORDER DETAIL VIEW ===
   if (view === 'detail' && selected) return (
     <div dir="rtl" style={PS}>
       <div style={{ background: '#111827', borderBottom: '1px solid #1F2937', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -174,6 +402,7 @@ export default function Dashboard() {
     </div>
   );
 
+  // === MAIN DASHBOARD VIEW ===
   return (
     <div dir="rtl" style={PS}>
       <div style={{ background: '#111827', borderBottom: '1px solid #1F2937', padding: '16px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -186,7 +415,8 @@ export default function Dashboard() {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={fetchOrders} style={{ background: '#1F2937', border: '1px solid #374151', color: '#9CA3AF', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>🔄 רענן</button>
-          <button onClick={() => setAuthed(false)} style={{ background: '#1F2937', border: '1px solid #374151', color: '#9CA3AF', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>🔒 התנתק</button>
+          <button onClick={() => setShowChangePassword(true)} style={{ background: '#1F2937', border: '1px solid #374151', color: '#9CA3AF', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>🔑 שינוי סיסמה</button>
+          <button onClick={handleLogout} style={{ background: '#1F2937', border: '1px solid #374151', color: '#9CA3AF', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>🔒 התנתק</button>
         </div>
       </div>
 
@@ -278,6 +508,45 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Change Password Modal — מתוך הלוח */}
+      {showChangePassword && (
+        <div style={modalOverlay} onClick={() => setShowChangePassword(false)}>
+          <div style={modalBox} onClick={e => e.stopPropagation()}>
+            <h3 style={{ color: '#F59E0B', marginTop: 0, marginBottom: '8px', fontSize: '18px' }}>🔑 שינוי סיסמת גישה</h3>
+            <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '16px' }}>
+              נדרשת סיסמת מנהל לאישור השינוי
+            </p>
+            <input type="password" value={adminPwd} onChange={e => setAdminPwd(e.target.value)}
+              placeholder="סיסמת מנהל" style={inputStyle} disabled={changeLoading} />
+            <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)}
+              placeholder="סיסמה חדשה (לפחות 6 תווים)" style={inputStyle} disabled={changeLoading} />
+            <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)}
+              placeholder="אישור סיסמה חדשה" style={inputStyle} disabled={changeLoading} />
+
+            {changeErr && (
+              <div style={{ background: '#7F1D1D33', border: '1px solid #EF444466', color: '#FCA5A5', padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
+                {changeErr}
+              </div>
+            )}
+            {changeMsg && (
+              <div style={{ background: '#06402344', border: '1px solid #10B98166', color: '#6EE7B7', padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
+                {changeMsg}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <button onClick={handleChangePassword} disabled={changeLoading} style={{ ...primaryBtn, flex: 1 }}>
+                {changeLoading ? 'משנה...' : 'שנה סיסמה'}
+              </button>
+              <button onClick={() => { setShowChangePassword(false); setAdminPwd(''); setNewPwd(''); setConfirmPwd(''); setChangeErr(''); setChangeMsg(''); }}
+                style={{ ...secondaryBtn, flex: 1 }}>
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
