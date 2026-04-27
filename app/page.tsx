@@ -32,11 +32,9 @@ export default function Dashboard() {
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
 
-  // Modal states
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showRecoverPassword, setShowRecoverPassword] = useState(false);
 
-  // Change password form
   const [adminPwd, setAdminPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
@@ -44,7 +42,6 @@ export default function Dashboard() {
   const [changeErr, setChangeErr] = useState('');
   const [changeLoading, setChangeLoading] = useState(false);
 
-  // Recover password form
   const [recoverAdminPwd, setRecoverAdminPwd] = useState('');
   const [recoverMsg, setRecoverMsg] = useState('');
   const [recoverLoading, setRecoverLoading] = useState(false);
@@ -57,7 +54,6 @@ export default function Dashboard() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
-  // Check session token on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const token = sessionStorage.getItem('dashboard_token');
@@ -104,39 +100,22 @@ export default function Dashboard() {
   const handleChangePassword = async () => {
     setChangeMsg('');
     setChangeErr('');
-
-    if (!adminPwd || !newPwd || !confirmPwd) {
-      setChangeErr('יש למלא את כל השדות');
-      return;
-    }
-    if (newPwd !== confirmPwd) {
-      setChangeErr('הסיסמאות החדשות אינן תואמות');
-      return;
-    }
-    if (newPwd.length < 6) {
-      setChangeErr('הסיסמה חייבת להיות לפחות 6 תווים');
-      return;
-    }
+    if (!adminPwd || !newPwd || !confirmPwd) { setChangeErr('יש למלא את כל השדות'); return; }
+    if (newPwd !== confirmPwd) { setChangeErr('הסיסמאות החדשות אינן תואמות'); return; }
+    if (newPwd.length < 6) { setChangeErr('הסיסמה חייבת להיות לפחות 6 תווים'); return; }
 
     setChangeLoading(true);
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'change_password',
-          adminPassword: adminPwd,
-          newPassword: newPwd
-        })
+        body: JSON.stringify({ action: 'change_password', adminPassword: adminPwd, newPassword: newPwd })
       });
       const data = await res.json();
       if (data.success) {
         setChangeMsg('✅ הסיסמה שונתה בהצלחה!');
         setAdminPwd(''); setNewPwd(''); setConfirmPwd('');
-        setTimeout(() => {
-          setShowChangePassword(false);
-          setChangeMsg('');
-        }, 2000);
+        setTimeout(() => { setShowChangePassword(false); setChangeMsg(''); }, 2000);
       } else {
         setChangeErr(data.error || 'שגיאה בשינוי הסיסמה');
       }
@@ -154,10 +133,7 @@ export default function Dashboard() {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'get_current_password_for_admin',
-          adminPassword: recoverAdminPwd
-        })
+        body: JSON.stringify({ action: 'get_current_password_for_admin', adminPassword: recoverAdminPwd })
       });
       const data = await res.json();
       if (data.success) {
@@ -194,14 +170,12 @@ export default function Dashboard() {
 
   const PS = { background: '#0A0E1A', color: '#fff', fontFamily: 'Heebo, sans-serif', minHeight: '100vh' };
 
-  // Modal styles
   const modalOverlay: React.CSSProperties = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' };
   const modalBox: React.CSSProperties = { background: '#111827', border: '1px solid #1F2937', borderRadius: '12px', padding: '28px', maxWidth: '420px', width: '100%' };
   const inputStyle: React.CSSProperties = { width: '100%', padding: '12px', border: '1px solid #374151', background: '#0F172A', color: '#fff', fontSize: '14px', marginBottom: '10px', textAlign: 'right', outline: 'none', borderRadius: '8px', boxSizing: 'border-box', direction: 'rtl' };
-  const primaryBtn: React.CSSProperties = { padding: '12px 20px', background: '#F59E0B', color: '#0A0E1A', border: 'none', fontSize: '14px', cursor: 'pointer', borderRadius: '8px', fontWeight: '700' };
+  const primaryBtn: React.CSSProperties = { padding: '12px 20px', background: '#F59E0B', color: '#0A0E1A', border: 'none', fontSize: '14px', cursor: 'pointer', borderRadius: '8px', fontWeight: 700 };
   const secondaryBtn: React.CSSProperties = { padding: '12px 20px', background: '#1F2937', color: '#9CA3AF', border: '1px solid #374151', fontSize: '14px', cursor: 'pointer', borderRadius: '8px' };
 
-  // === LOGIN PAGE ===
   if (!authed) {
     return (
       <div dir="rtl" style={{ ...PS, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -237,14 +211,11 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Recover Password Modal */}
         {showRecoverPassword && (
           <div style={modalOverlay} onClick={() => setShowRecoverPassword(false)}>
             <div style={modalBox} onClick={e => e.stopPropagation()}>
               <h3 style={{ color: '#F59E0B', marginTop: 0, marginBottom: '8px', fontSize: '18px' }}>🔍 שחזור סיסמה</h3>
-              <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '16px' }}>
-                הזן סיסמת מנהל כדי לקבל מידע על הסיסמה הנוכחית
-              </p>
+              <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '16px' }}>הזן סיסמת מנהל כדי לקבל מידע על הסיסמה הנוכחית</p>
               <input type="password" value={recoverAdminPwd} onChange={e => setRecoverAdminPwd(e.target.value)}
                 placeholder="סיסמת מנהל" style={inputStyle} disabled={recoverLoading}
                 onKeyDown={e => { if (e.key === 'Enter') handleRecoverPassword(); }} />
@@ -265,22 +236,17 @@ export default function Dashboard() {
                   {recoverLoading ? 'בודק...' : 'בדוק'}
                 </button>
                 <button onClick={() => { setShowRecoverPassword(false); setRecoverAdminPwd(''); setRecoverMsg(''); }}
-                  style={{ ...secondaryBtn, flex: 1 }}>
-                  ביטול
-                </button>
+                  style={{ ...secondaryBtn, flex: 1 }}>ביטול</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Change Password Modal */}
         {showChangePassword && (
           <div style={modalOverlay} onClick={() => setShowChangePassword(false)}>
             <div style={modalBox} onClick={e => e.stopPropagation()}>
               <h3 style={{ color: '#F59E0B', marginTop: 0, marginBottom: '8px', fontSize: '18px' }}>🔑 שינוי סיסמת גישה</h3>
-              <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '16px' }}>
-                נדרשת סיסמת מנהל לאישור השינוי
-              </p>
+              <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '16px' }}>נדרשת סיסמת מנהל לאישור השינוי</p>
               <input type="password" value={adminPwd} onChange={e => setAdminPwd(e.target.value)}
                 placeholder="סיסמת מנהל" style={inputStyle} disabled={changeLoading} />
               <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)}
@@ -304,9 +270,7 @@ export default function Dashboard() {
                   {changeLoading ? 'משנה...' : 'שנה סיסמה'}
                 </button>
                 <button onClick={() => { setShowChangePassword(false); setAdminPwd(''); setNewPwd(''); setConfirmPwd(''); setChangeErr(''); setChangeMsg(''); }}
-                  style={{ ...secondaryBtn, flex: 1 }}>
-                  ביטול
-                </button>
+                  style={{ ...secondaryBtn, flex: 1 }}>ביטול</button>
               </div>
             </div>
           </div>
@@ -315,7 +279,6 @@ export default function Dashboard() {
     );
   }
 
-  // === ORDER DETAIL VIEW ===
   if (view === 'detail' && selected) return (
     <div dir="rtl" style={PS}>
       <div style={{ background: '#111827', borderBottom: '1px solid #1F2937', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -348,7 +311,7 @@ export default function Dashboard() {
               ['רווח', `₪${Number(selected.profit || 0).toLocaleString()}`, '#F59E0B']].map(([label, val, color]) => (
               <div key={label} style={{ background: '#0F172A', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                 <p style={{ color: '#6B7280', fontSize: '11px', margin: '0 0 4px' }}>{label}</p>
-                <p style={{ color, fontSize: '18px', fontWeight: '700', margin: 0 }}>{val}</p>
+                <p style={{ color, fontSize: '18px', fontWeight: 700, margin: 0 }}>{val}</p>
               </div>
             ))}
           </div>
@@ -356,7 +319,7 @@ export default function Dashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
             {Object.entries(SL).map(([key, label]) => (
               <button key={key} onClick={() => updateStatus(selected.id, key)} disabled={updating}
-                style={{ background: selected.status === key ? SC[key] : '#1F2937', color: selected.status === key ? '#fff' : '#9CA3AF', border: `1px solid ${SC[key]}66`, padding: '10px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                style={{ background: selected.status === key ? SC[key] : '#1F2937', color: selected.status === key ? '#fff' : '#9CA3AF', border: `1px solid ${SC[key]}66`, padding: '10px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>
                 {label}
               </button>
             ))}
@@ -402,14 +365,13 @@ export default function Dashboard() {
     </div>
   );
 
-  // === MAIN DASHBOARD VIEW ===
   return (
     <div dir="rtl" style={PS}>
       <div style={{ background: '#111827', borderBottom: '1px solid #1F2937', padding: '16px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span style={{ fontSize: '24px' }}>📦</span>
           <div>
-            <h1 style={{ fontSize: '18px', fontWeight: '700', color: '#F59E0B', margin: 0 }}>המרכז למסורת יהודית</h1>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, color: '#F59E0B', margin: 0 }}>המרכז למסורת יהודית</h1>
             <p style={{ fontSize: '11px', color: '#6B7280', margin: 0 }}>לוח בקרה</p>
           </div>
         </div>
@@ -432,7 +394,7 @@ export default function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <p style={{ color: '#6B7280', fontSize: '12px', margin: '0 0 6px' }}>{s.label}</p>
-                  <p style={{ color: s.color, fontSize: '24px', fontWeight: '700', margin: 0 }}>{s.value}</p>
+                  <p style={{ color: s.color, fontSize: '24px', fontWeight: 700, margin: 0 }}>{s.value}</p>
                 </div>
                 <span style={{ fontSize: '28px' }}>{s.icon}</span>
               </div>
@@ -472,13 +434,13 @@ export default function Dashboard() {
                   <tr key={order.id} style={{ borderBottom: '1px solid #1F2937', cursor: 'pointer' }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#1F2937')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding: '12px 16px', fontSize: '12px', color: '#F59E0B', fontWeight: '700' }}>#{formatOrderId(order.id)}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '12px', color: '#F59E0B', fontWeight: 700 }}>#{formatOrderId(order.id)}</td>
                     <td style={{ padding: '12px 16px', fontSize: '12px', color: '#6B7280' }}>
                       {order.external_order_id ? '#' + order.external_order_id : '—'}
                     </td>
                     <td style={{ padding: '12px 16px', fontSize: '12px', color: '#9CA3AF' }}>{new Date(order.created_at).toLocaleDateString('he-IL')}</td>
                     <td style={{ padding: '12px 16px' }}>
-                      <div style={{ fontSize: '13px', fontWeight: '600' }}>{order.customer_name}</div>
+                      <div style={{ fontSize: '13px', fontWeight: 600 }}>{order.customer_name}</div>
                       <div style={{ fontSize: '11px', color: '#6B7280' }}>{order.customer_phone}</div>
                     </td>
                     <td style={{ padding: '12px 16px', fontSize: '12px', color: '#9CA3AF', maxWidth: '150px' }}>
@@ -486,12 +448,12 @@ export default function Dashboard() {
                         <div key={idx}>{item.name || item.sourceProductId || 'מוצר'} ×{item.quantity || 1}</div>
                       ))}
                     </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#10B981', fontWeight: '600' }}>₪{Number(order.total_price).toLocaleString()}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#10B981', fontWeight: 600 }}>₪{Number(order.total_price).toLocaleString()}</td>
                     <td style={{ padding: '12px 16px', fontSize: '13px', color: '#EF4444' }}>₪{Number(order.cost_price || 0).toLocaleString()}</td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#F59E0B', fontWeight: '600' }}>₪{Number(order.profit || 0).toLocaleString()}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#F59E0B', fontWeight: 600 }}>₪{Number(order.profit || 0).toLocaleString()}</td>
                     <td style={{ padding: '12px 16px', fontSize: '12px', color: '#9CA3AF' }}>{sourceLabel(order.utm_source || order.source)}</td>
                     <td style={{ padding: '12px 16px' }}>
-                      <span style={{ background: SC[order.status] + '22', color: SC[order.status], padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', border: `1px solid ${SC[order.status]}44` }}>
+                      <span style={{ background: SC[order.status] + '22', color: SC[order.status], padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 600, border: `1px solid ${SC[order.status]}44` }}>
                         {SL[order.status] || order.status}
                       </span>
                     </td>
@@ -509,14 +471,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Change Password Modal — מתוך הלוח */}
       {showChangePassword && (
         <div style={modalOverlay} onClick={() => setShowChangePassword(false)}>
           <div style={modalBox} onClick={e => e.stopPropagation()}>
             <h3 style={{ color: '#F59E0B', marginTop: 0, marginBottom: '8px', fontSize: '18px' }}>🔑 שינוי סיסמת גישה</h3>
-            <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '16px' }}>
-              נדרשת סיסמת מנהל לאישור השינוי
-            </p>
+            <p style={{ color: '#9CA3AF', fontSize: '13px', marginBottom: '16px' }}>נדרשת סיסמת מנהל לאישור השינוי</p>
             <input type="password" value={adminPwd} onChange={e => setAdminPwd(e.target.value)}
               placeholder="סיסמת מנהל" style={inputStyle} disabled={changeLoading} />
             <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)}
@@ -540,9 +499,7 @@ export default function Dashboard() {
                 {changeLoading ? 'משנה...' : 'שנה סיסמה'}
               </button>
               <button onClick={() => { setShowChangePassword(false); setAdminPwd(''); setNewPwd(''); setConfirmPwd(''); setChangeErr(''); setChangeMsg(''); }}
-                style={{ ...secondaryBtn, flex: 1 }}>
-                ביטול
-              </button>
+                style={{ ...secondaryBtn, flex: 1 }}>ביטול</button>
             </div>
           </div>
         </div>
