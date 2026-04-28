@@ -15,8 +15,10 @@ type CurrentUser = { id: number; username: string; fullName: string; email: stri
 const SC: Record<string, string> = { pending:'#F59E0B', confirmed:'#3B82F6', shipped:'#8B5CF6', delivered:'#10B981', cancelled:'#EF4444' };
 const SL: Record<string, string> = { pending:'ממתין לטיפול', confirmed:'אושר', shipped:'נשלח', delivered:'נמסר', cancelled:'בוטל' };
 
+// ✅ תיקון: חותך ל-5 ספרות אחרונות (תואם למה שהלקוח רואה באתר)
 function formatOrderId(id: string) {
-  return String(id).replace(/\D/g, '').padStart(5, '0');
+  const numeric = String(id).replace(/\D/g, '');
+  return numeric.slice(-5).padStart(5, '0');
 }
 
 const sourceLabel = (s: string) => {
@@ -76,18 +78,15 @@ function TextInput({ value, onChange, placeholder, disabled, onKeyDown, type = '
 type LoginScreen = 'login' | 'forgot_password_email' | 'forgot_password_code' | 'forgot_username';
 
 export default function Dashboard() {
-  // === Auth state ===
   const [authed, setAuthed] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [loginScreen, setLoginScreen] = useState<LoginScreen>('login');
 
-  // Login
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
 
-  // Forgot password
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotCode, setForgotCode] = useState('');
   const [forgotNewPwd, setForgotNewPwd] = useState('');
@@ -96,7 +95,6 @@ export default function Dashboard() {
   const [forgotErr, setForgotErr] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
 
-  // Change password (logged in)
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
@@ -105,7 +103,6 @@ export default function Dashboard() {
   const [changeErr, setChangeErr] = useState('');
   const [changeLoading, setChangeLoading] = useState(false);
 
-  // === Orders state ===
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Order | null>(null);
@@ -248,14 +245,14 @@ export default function Dashboard() {
 
   const updateStatus = async (id: string, newStatus: string) => {
     setUpdating(true);
-    await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) });
+    await fetch(`/api/orders`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status: newStatus }) });
     await fetchOrders();
     setUpdating(false);
     setSelected(prev => prev ? { ...prev, status: newStatus } : null);
   };
 
   const filtered = orders.filter(o => {
-    const matchSearch = o.customer_name?.includes(search) || o.customer_phone?.includes(search) || o.customer_email?.includes(search);
+    const matchSearch = o.customer_name?.includes(search) || o.customer_phone?.includes(search) || o.customer_email?.includes(search) || formatOrderId(o.id).includes(search);
     const matchStatus = filterStatus === 'all' || o.status === filterStatus;
     return matchSearch && matchStatus;
   });
@@ -273,7 +270,6 @@ export default function Dashboard() {
   const primaryBtn: React.CSSProperties = { padding: '12px 20px', background: '#F59E0B', color: '#0A0E1A', border: 'none', fontSize: '14px', cursor: 'pointer', borderRadius: '8px', fontWeight: 700 };
   const secondaryBtn: React.CSSProperties = { padding: '12px 20px', background: '#1F2937', color: '#9CA3AF', border: '1px solid #374151', fontSize: '14px', cursor: 'pointer', borderRadius: '8px' };
 
-  // === LOGIN PAGE ===
   if (!authed) {
     return (
       <div dir="rtl" style={{ ...PS, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -394,7 +390,6 @@ export default function Dashboard() {
     );
   }
 
-  // === ORDER DETAIL ===
   if (view === 'detail' && selected) return (
     <div dir="rtl" style={PS}>
       <div style={{ background: '#111827', borderBottom: '1px solid #1F2937', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -471,7 +466,6 @@ export default function Dashboard() {
     </div>
   );
 
-  // === MAIN DASHBOARD ===
   return (
     <div dir="rtl" style={PS}>
       <div style={{ background: '#111827', borderBottom: '1px solid #1F2937', padding: '16px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -510,7 +504,7 @@ export default function Dashboard() {
         </div>
 
         <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 חיפוש לפי שם / טלפון / מייל..."
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 חיפוש לפי שם / טלפון / מייל / מס' הזמנה..."
             style={{ flex: 1, background: '#111827', border: '1px solid #1F2937', color: '#fff', padding: '10px 16px', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
             style={{ background: '#111827', border: '1px solid #1F2937', color: '#9CA3AF', padding: '10px 16px', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>
