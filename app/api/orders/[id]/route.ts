@@ -1,13 +1,40 @@
 import { Pool } from 'pg';
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+function getAuthSecret(): string {
+  return process.env.DASHBOARD_AUTH_SECRET || process.env.DATABASE_URL || 'change-this-secret';
+}
+
+function sign(value: string): string {
+  return crypto.createHmac('sha256', getAuthSecret()).update(value).digest('base64url');
+}
+
+function isDashboardRequest(request: Request): boolean {
+  const header = request.headers.get('authorization') || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const [payload, signature] = token.split('.');
+  if (!payload || !signature || sign(payload) !== signature) return false;
+
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { exp?: number };
+    return typeof data.exp === 'number' && data.exp > Date.now();
+  } catch {
+    return false;
+  }
+}
+
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
+    if (!isDashboardRequest(request)) {
+      return NextResponse.json({ error: 'לא מורשה' }, { status: 401 })
+    }
+
     const id = params.id
     const body = await request.json() as {
       auto_submitted?: boolean
@@ -59,8 +86,12 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
 }
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
+    if (!isDashboardRequest(request)) {
+      return NextResponse.json({ error: 'לא מורשה' }, { status: 401 })
+    }
+
     const result = await pool.query('SELECT * FROM orders WHERE id = $1', [params.id])
 
     if (result.rows.length === 0) {
