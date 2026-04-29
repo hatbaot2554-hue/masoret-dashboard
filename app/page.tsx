@@ -31,17 +31,18 @@ function formatOrderId(id: string) {
 }
 
 function getProductUrl(item: OrderItem): string {
+  const baseUrl = 'https://masoret-website.vercel.app';
   if (typeof item.sourceProductIndex === 'number') {
-    return `${SITE_URL}/products/${item.sourceProductIndex}`;
+    return baseUrl + '/products/' + item.sourceProductIndex;
   }
   const idAsNum = parseInt(String(item.sourceProductId || ''));
   if (!isNaN(idAsNum) && idAsNum >= 0 && idAsNum < 1000) {
-    return `${SITE_URL}/products/${idAsNum}`;
+    return baseUrl + '/products/' + idAsNum;
   }
   if (item.name) {
-    return `${SITE_URL}/products?search=${encodeURIComponent(item.name)}`;
+    return baseUrl + '/products?search=' + encodeURIComponent(item.name);
   }
-  return `${SITE_URL}/products`;
+  return baseUrl + '/products';
 }
 
 const sourceLabel = (s: string) => {
