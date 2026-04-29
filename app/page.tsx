@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 
+const PRODUCT_SITE_URL = 'https://masoret-website.vercel.app';
+
 type OrderItem = {
   name?: string;
   sourceProductId?: string;
@@ -23,26 +25,24 @@ type CurrentUser = { id: number; username: string; fullName: string; email: stri
 const SC: Record<string, string> = { pending:'#F59E0B', confirmed:'#3B82F6', shipped:'#8B5CF6', delivered:'#10B981', cancelled:'#EF4444' };
 const SL: Record<string, string> = { pending:'ממתין לטיפול', confirmed:'אושר', shipped:'נשלח', delivered:'נמסר', cancelled:'בוטל' };
 
-
-
 function formatOrderId(id: string) {
   const numeric = String(id).replace(/\D/g, '');
   return numeric.slice(-5).padStart(5, '0');
 }
 
-function getProductUrl(item: OrderItem): string {
-  const baseUrl = 'https://masoret-website.vercel.app';
+function buildProductUrl(item: OrderItem): string {
+  const base = PRODUCT_SITE_URL;
   if (typeof item.sourceProductIndex === 'number') {
-    return baseUrl + '/products/' + item.sourceProductIndex;
+    return base + '/products/' + item.sourceProductIndex;
   }
   const idAsNum = parseInt(String(item.sourceProductId || ''));
   if (!isNaN(idAsNum) && idAsNum >= 0 && idAsNum < 1000) {
-    return baseUrl + '/products/' + idAsNum;
+    return base + '/products/' + idAsNum;
   }
   if (item.name) {
-    return baseUrl + '/products?search=' + encodeURIComponent(item.name);
+    return base + '/products?search=' + encodeURIComponent(item.name);
   }
-  return baseUrl + '/products';
+  return base + '/products';
 }
 
 const sourceLabel = (s: string) => {
@@ -96,6 +96,24 @@ function TextInput({ value, onChange, placeholder, disabled, onKeyDown, type = '
     <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
       disabled={disabled} onKeyDown={onKeyDown} autoFocus={autoFocus}
       style={{ width: '100%', padding: '12px', border: '1px solid #374151', background: '#0F172A', color: '#fff', fontSize: '14px', textAlign: 'right', outline: 'none', borderRadius: '8px', boxSizing: 'border-box', direction: 'rtl', marginBottom: '10px' }} />
+  );
+}
+
+function ProductLink({ item }: { item: OrderItem }) {
+  const url = buildProductUrl(item);
+  return (
+    
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(e) => {
+        e.preventDefault();
+        window.open(url, '_blank', 'noreferrer');
+      }}
+      style={{ color: '#60A5FA', textDecoration: 'none', cursor: 'pointer' }}
+    >
+      {item.name || item.sourceProductId || 'מוצר'}
+    </a>
   );
 }
 
@@ -470,10 +488,7 @@ export default function Dashboard() {
                 return (
                   <tr key={idx} style={{ borderBottom: '1px solid #1F2937' }}>
                     <td style={{ padding: '12px 16px', fontSize: '13px' }}>
-                      <a href={getProductUrl(item)} target="_blank" rel="noreferrer"
-                        style={{ color: '#60A5FA', textDecoration: 'none' }}>
-                        {item.name || item.sourceProductId || 'מוצר'}
-                      </a>
+                      <ProductLink item={item} />
                     </td>
                     <td style={{ padding: '12px 16px', fontSize: '12px', color: '#9CA3AF' }}>{item.options || '—'}</td>
                     <td style={{ padding: '12px 16px', fontSize: '13px', color: '#9CA3AF' }}>{qty}</td>
