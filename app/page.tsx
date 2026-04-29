@@ -1,7 +1,15 @@
 'use client';
 import { useEffect, useState } from 'react';
 
-type OrderItem = { name?: string; sourceProductId?: string; quantity?: number; price?: number; cost?: number; options?: string };
+type OrderItem = {
+  name?: string;
+  sourceProductId?: string;
+  sourceProductIndex?: number;
+  quantity?: number;
+  price?: number;
+  cost?: number;
+  options?: string;
+};
 type Order = {
   id: string; created_at: string; customer_name: string; customer_phone: string;
   customer_email: string; customer_address: string; total_price: number;
@@ -15,10 +23,30 @@ type CurrentUser = { id: number; username: string; fullName: string; email: stri
 const SC: Record<string, string> = { pending:'#F59E0B', confirmed:'#3B82F6', shipped:'#8B5CF6', delivered:'#10B981', cancelled:'#EF4444' };
 const SL: Record<string, string> = { pending:'ממתין לטיפול', confirmed:'אושר', shipped:'נשלח', delivered:'נמסר', cancelled:'בוטל' };
 
-// ✅ תיקון: חותך ל-5 ספרות אחרונות (תואם למה שהלקוח רואה באתר)
+const SITE_URL = 'https://masoret-website.vercel.app';
+
 function formatOrderId(id: string) {
   const numeric = String(id).replace(/\D/g, '');
   return numeric.slice(-5).padStart(5, '0');
+}
+
+// ✅ בונה קישור חכם למוצר
+function getProductUrl(item: OrderItem): string {
+  // עדיפות 1: sourceProductIndex (חדש - מדויק)
+  if (typeof item.sourceProductIndex === 'number') {
+    return `${SITE_URL}/products/${item.sourceProductIndex}`;
+  }
+  // עדיפות 2: אם sourceProductId הוא מספר קטן (כנראה index של הזמנה ישנה)
+  const idAsNum = parseInt(String(item.sourceProductId || ''));
+  if (!isNaN(idAsNum) && idAsNum >= 0 && idAsNum < 1000) {
+    return `${SITE_URL}/products/${idAsNum}`;
+  }
+  // עדיפות 3: חיפוש לפי שם המוצר
+  if (item.name) {
+    return `${SITE_URL}/products?search=${encodeURIComponent(item.name)}`;
+  }
+  // ברירת מחדל
+  return `${SITE_URL}/products`;
 }
 
 const sourceLabel = (s: string) => {
@@ -446,7 +474,7 @@ export default function Dashboard() {
                 return (
                   <tr key={idx} style={{ borderBottom: '1px solid #1F2937' }}>
                     <td style={{ padding: '12px 16px', fontSize: '13px' }}>
-                      <a href={`https://masoret-website.vercel.app/products/${item.sourceProductId}`} target="_blank" rel="noreferrer"
+                      <a href={getProductUrl(item)} target="_blank" rel="noreferrer"
                         style={{ color: '#60A5FA', textDecoration: 'none' }}>
                         {item.name || item.sourceProductId || 'מוצר'}
                       </a>
