@@ -50,6 +50,12 @@ function openProductPage(item: OrderItem) {
   window.open(url, '_blank', 'noreferrer');
 }
 
+function dashboardAuthHeaders(): HeadersInit {
+  if (typeof window === 'undefined') return {};
+  const token = sessionStorage.getItem('dashboard_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 const sourceLabel = (s: string) => {
   if (!s || s === 'direct') return '🔗 ישיר';
   if (s.includes('google')) return '🔍 Google';
@@ -153,7 +159,19 @@ export default function Dashboard() {
 
   const fetchOrders = () => {
     setLoading(true);
-    fetch('/api/orders').then(r => r.json()).then(data => { if (Array.isArray(data)) setOrders(data); setLoading(false); }).catch(() => setLoading(false));
+    fetch('/api/orders', { headers: dashboardAuthHeaders() })
+      .then(async r => {
+        if (r.status === 401) {
+          sessionStorage.removeItem('dashboard_token');
+          sessionStorage.removeItem('dashboard_user');
+          setAuthed(false);
+          setCurrentUser(null);
+          return [];
+        }
+        return r.json();
+      })
+      .then(data => { if (Array.isArray(data)) setOrders(data); setLoading(false); })
+      .catch(() => setLoading(false));
   };
 
   useEffect(() => { if (authed) fetchOrders(); }, [authed]);
@@ -274,7 +292,11 @@ export default function Dashboard() {
 
   const updateStatus = async (id: string, newStatus: string) => {
     setUpdating(true);
-    await fetch(`/api/orders`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status: newStatus }) });
+    await fetch(`/api/orders`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
+      body: JSON.stringify({ id, status: newStatus })
+    });
     await fetchOrders();
     setUpdating(false);
     setSelected(prev => prev ? { ...prev, status: newStatus } : null);

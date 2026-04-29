@@ -1,16 +1,76 @@
 import { Pool } from 'pg';
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+function getAuthSecret(): string {
+  return process.env.DASHBOARD_AUTH_SECRET || process.env.DATABASE_URL || 'change-this-secret';
+}
+
+function sign(value: string): string {
+  return crypto.createHmac('sha256', getAuthSecret()).update(value).digest('base64url');
+}
+
+function isDashboardRequest(request: Request): boolean {
+  const header = request.headers.get('authorization') || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const [payload, signature] = token.split('.');
+  if (!payload || !signature || sign(payload) !== signature) return false;
+
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { exp?: number };
+    return typeof data.exp === 'number' && data.exp > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function publicOrderId(id: unknown): string {
+  return String(id || '').replace(/\D/g, '').slice(-5).padStart(5, '0');
+}
+
+const statusLabels: Record<string, string> = {
+  pending: 'ממתין לטיפול',
+  confirmed: 'אושר',
+  shipped: 'נשלח',
+  delivered: 'נמסר',
+  cancelled: 'בוטל'
+};
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const autoSubmitted = searchParams.get('auto_submitted')
+    const orderNumber = searchParams.get('order')?.trim()
+    const email = searchParams.get('email')?.trim().toLowerCase()
+
+    if (orderNumber && email) {
+      const result = await pool.query(
+        `SELECT * FROM orders WHERE LOWER(customer_email) = LOWER($1) ORDER BY created_at DESC LIMIT 50`,
+        [email]
+      )
+      const order = result.rows.find(row => publicOrderId(row.id) === orderNumber)
+      if (!order) {
+        return NextResponse.json({ error: 'הזמנה לא נמצאה' }, { status: 404 })
+      }
+      return NextResponse.json({
+        order: {
+          ...order,
+          our_order_id: publicOrderId(order.id),
+          date: new Date(order.created_at).toLocaleDateString('he-IL'),
+          status_he: statusLabels[order.status] || order.status || 'בטיפול'
+        }
+      })
+    }
+
+    if (!isDashboardRequest(request)) {
+      return NextResponse.json({ error: 'לא מורשה' }, { status: 401 })
+    }
 
     let query = 'SELECT * FROM orders'
     const params: string[] = []
@@ -92,6 +152,10 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    if (!isDashboardRequest(request)) {
+      return NextResponse.json({ error: 'לא מורשה' }, { status: 401 })
+    }
+
     const body = await request.json() as {
       id: string
       auto_submitted?: boolean

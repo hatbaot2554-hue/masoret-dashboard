@@ -15,6 +15,28 @@ function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+function getAuthSecret(): string {
+  return process.env.DASHBOARD_AUTH_SECRET || process.env.DATABASE_URL || 'change-this-secret';
+}
+
+function base64UrlJson(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function sign(value: string): string {
+  return crypto.createHmac('sha256', getAuthSecret()).update(value).digest('base64url');
+}
+
+function createToken(user: { id: number; username: string; role: string }): string {
+  const payload = base64UrlJson({
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    exp: Date.now() + 12 * 60 * 60 * 1000
+  });
+  return `${payload}.${sign(payload)}`;
+}
+
 async function sendEmail(to: string, subject: string, html: string): Promise<{ success: boolean; error?: string }> {
   if (!process.env.RESEND_API_KEY) {
     return { success: false, error: 'RESEND_API_KEY לא מוגדר' };
@@ -102,7 +124,7 @@ export async function POST(request: Request) {
       if (user.password_hash !== hashPassword(password)) {
         return NextResponse.json({ success: false, error: 'שם משתמש או סיסמה שגויים' }, { status: 401 });
       }
-      const token = crypto.randomBytes(32).toString('hex');
+      const token = createToken({ id: user.id, username: user.username, role: user.role });
       return NextResponse.json({
         success: true,
         token,
