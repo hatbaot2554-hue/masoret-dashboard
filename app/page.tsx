@@ -45,6 +45,11 @@ function buildProductUrl(item: OrderItem): string {
   return base + '/products';
 }
 
+function openProductPage(item: OrderItem) {
+  const url = buildProductUrl(item);
+  window.open(url, '_blank', 'noreferrer');
+}
+
 const sourceLabel = (s: string) => {
   if (!s || s === 'direct') return '🔗 ישיר';
   if (s.includes('google')) return '🔍 Google';
@@ -96,24 +101,6 @@ function TextInput({ value, onChange, placeholder, disabled, onKeyDown, type = '
     <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
       disabled={disabled} onKeyDown={onKeyDown} autoFocus={autoFocus}
       style={{ width: '100%', padding: '12px', border: '1px solid #374151', background: '#0F172A', color: '#fff', fontSize: '14px', textAlign: 'right', outline: 'none', borderRadius: '8px', boxSizing: 'border-box', direction: 'rtl', marginBottom: '10px' }} />
-  );
-}
-
-function ProductLink({ item }: { item: OrderItem }) {
-  const url = buildProductUrl(item);
-  return (
-    
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      onClick={(e) => {
-        e.preventDefault();
-        window.open(url, '_blank', 'noreferrer');
-      }}
-      style={{ color: '#60A5FA', textDecoration: 'none', cursor: 'pointer' }}
-    >
-      {item.name || item.sourceProductId || 'מוצר'}
-    </a>
   );
 }
 
@@ -488,7 +475,10 @@ export default function Dashboard() {
                 return (
                   <tr key={idx} style={{ borderBottom: '1px solid #1F2937' }}>
                     <td style={{ padding: '12px 16px', fontSize: '13px' }}>
-                      <ProductLink item={item} />
+                      <span onClick={() => openProductPage(item)}
+                        style={{ color: '#60A5FA', textDecoration: 'underline', cursor: 'pointer' }}>
+                        {item.name || item.sourceProductId || 'מוצר'}
+                      </span>
                     </td>
                     <td style={{ padding: '12px 16px', fontSize: '12px', color: '#9CA3AF' }}>{item.options || '—'}</td>
                     <td style={{ padding: '12px 16px', fontSize: '13px', color: '#9CA3AF' }}>{qty}</td>
