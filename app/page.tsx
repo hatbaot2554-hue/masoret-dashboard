@@ -30,22 +30,17 @@ function formatOrderId(id: string) {
   return numeric.slice(-5).padStart(5, '0');
 }
 
-// ✅ בונה קישור חכם למוצר
 function getProductUrl(item: OrderItem): string {
-  // עדיפות 1: sourceProductIndex (חדש - מדויק)
   if (typeof item.sourceProductIndex === 'number') {
     return `${SITE_URL}/products/${item.sourceProductIndex}`;
   }
-  // עדיפות 2: אם sourceProductId הוא מספר קטן (כנראה index של הזמנה ישנה)
   const idAsNum = parseInt(String(item.sourceProductId || ''));
   if (!isNaN(idAsNum) && idAsNum >= 0 && idAsNum < 1000) {
     return `${SITE_URL}/products/${idAsNum}`;
   }
-  // עדיפות 3: חיפוש לפי שם המוצר
   if (item.name) {
     return `${SITE_URL}/products?search=${encodeURIComponent(item.name)}`;
   }
-  // ברירת מחדל
   return `${SITE_URL}/products`;
 }
 
