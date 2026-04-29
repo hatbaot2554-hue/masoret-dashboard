@@ -23,7 +23,7 @@ type CurrentUser = { id: number; username: string; fullName: string; email: stri
 const SC: Record<string, string> = { pending:'#F59E0B', confirmed:'#3B82F6', shipped:'#8B5CF6', delivered:'#10B981', cancelled:'#EF4444' };
 const SL: Record<string, string> = { pending:'ממתין לטיפול', confirmed:'אושר', shipped:'נשלח', delivered:'נמסר', cancelled:'בוטל' };
 
-const SITE_URL = 'https://masoret-website.vercel.app';
+
 
 function formatOrderId(id: string) {
   const numeric = String(id).replace(/\D/g, '');
