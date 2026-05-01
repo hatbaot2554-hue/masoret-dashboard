@@ -15,6 +15,12 @@ type OrderItem = {
   image?: string;
   images?: string[];
   engraving?: Record<string, string | number | boolean | null | undefined>;
+  sketchFile?: {
+    name?: string;
+    type?: string;
+    size?: number;
+    dataUrl?: string;
+  } | null;
   selectedAttributes?: Record<string, string>;
   quantity?: number;
   price?: number;
@@ -103,7 +109,7 @@ const FIELD_OPTIONS = [
   ['name', 'אימייל לקוח'],
   ['customer', 'לקוחות'],
   ['products', 'מוצרים'],
-  ['orderNumber', 'Order Number'],
+  ['orderNumber', 'מספר הזמנה'],
 ];
 
 const NAV_ITEMS: { key: AdminView; label: string }[] = [
@@ -168,7 +174,7 @@ function paymentMethodLabel(method: string | undefined, status: string | undefin
   if (value.includes('credit') || value.includes('card') || value.includes('tranzila') || value.includes('אשראי')) return 'אשראי';
   if (value.includes('bank') || value.includes('transfer') || value.includes('העברה')) return 'העברה בנקאית';
   if (value.includes('cash') || value.includes('מזומן')) return 'מזומן';
-  if (value.includes('paypal')) return 'PayPal';
+  if (value.includes('paypal')) return 'פייפאל';
   if (value.includes('paid') || value.includes('completed')) return 'אשראי';
   return method || 'לא צוין';
 }
@@ -207,16 +213,22 @@ function engravingLines(item: OrderItem) {
   return lines;
 }
 
+function fileSizeLabel(size: number | undefined) {
+  const value = Number(size || 0);
+  if (!value) return '';
+  if (value < 1024 * 1024) return `${Math.ceil(value / 1024)} ק"ב`;
+  return `${(value / 1024 / 1024).toFixed(1)} מ"ב`;
+}
+
 function orderSourceParts(order: Order) {
   const source = order.utm_source || order.source || '';
   const lower = source.toLowerCase();
   return {
     source: sourceLabel(order),
-    type: lower.includes('utm') || lower.includes('google') || lower.includes('cpc') ? 'utm' : 'ישיר',
-    campaign: lower.includes('google') ? 'google_cpc' : '-',
-    medium: lower.includes('cpc') ? 'cpc' : lower.includes('google') ? 'ממומן' : 'לא ידוע',
+    type: lower.includes('utm') || lower.includes('google') || lower.includes('cpc') ? 'קישור קמפיין' : 'ישיר',
+    campaign: lower.includes('google') ? 'קמפיין גוגל' : 'לא נאסף',
+    medium: lower.includes('cpc') ? 'קליק ממומן' : lower.includes('google') ? 'ממומן' : 'לא נאסף',
     device: 'מחשב שולחני',
-    pageViews: 5,
   };
 }
 
@@ -245,10 +257,10 @@ function timeHe(date: string) {
 
 function sourceLabel(order: Order) {
   const source = `${order.utm_source || order.source || ''}`.toLowerCase();
-  if (source.includes('google')) return source.includes('shopping') ? 'מקור: Google Shopping' : 'Google';
-  if (source.includes('facebook') || source.includes('fb')) return 'Facebook';
-  if (source.includes('instagram')) return 'Instagram';
-  if (source.includes('organic')) return 'Google אורגני';
+  if (source.includes('google')) return source.includes('shopping') ? 'מקור: גוגל שופינג' : 'גוגל';
+  if (source.includes('facebook') || source.includes('fb')) return 'פייסבוק';
+  if (source.includes('instagram')) return 'אינסטגרם';
+  if (source.includes('organic')) return 'גוגל אורגני';
   return 'מנהל מערכת אינטרנט';
 }
 
@@ -844,6 +856,7 @@ export default function Dashboard() {
                 <thead>
                   <tr>
                     <th>פריט</th>
+                    <th>מחיר ללקוח</th>
                     <th>עלות</th>
                     <th>כמות</th>
                     <th>סך הכל</th>
@@ -857,6 +870,7 @@ export default function Dashboard() {
                     const product = matchProduct(item, productsCatalog);
                     const image = itemImage(item, product);
                     const lines = engravingLines(item);
+                    const file = item.sketchFile;
                     return (
                       <tr key={`${item.name}-${index}`}>
                         <td className="product-cell">
@@ -884,8 +898,22 @@ export default function Dashboard() {
                                   {lines.map((line) => <span key={line}>{line}</span>)}
                                 </div>
                               )}
+                              {file?.name && (
+                                <div className="addon-fields">
+                                  <strong>קובץ שהלקוח העלה</strong>
+                                  {file.dataUrl ? (
+                                    <a href={file.dataUrl} download={file.name} target="_blank" rel="noopener noreferrer">{file.name}</a>
+                                  ) : (
+                                    <span>{file.name}</span>
+                                  )}
+                                  <span>{[file.type, fileSizeLabel(file.size)].filter(Boolean).join(' · ')}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
+                        </td>
+                        <td>
+                          <input readOnly value={formatMoney(price)} />
                         </td>
                         <td>
                           <input readOnly value={formatMoney(cost)} />
@@ -900,19 +928,19 @@ export default function Dashboard() {
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={3}>סך ביניים</td>
+                    <td colSpan={4}>סך ביניים</td>
                     <td>{formatMoney(selected.total_price)}</td>
                   </tr>
                   <tr>
-                    <td colSpan={3}>עלות מוצרים</td>
+                    <td colSpan={4}>עלות מוצרים</td>
                     <td>{formatMoney(selected.cost_price)}</td>
                   </tr>
                   <tr>
-                    <td colSpan={3}>משלוח / תוספות מחיר</td>
+                    <td colSpan={4}>משלוח / תוספות מחיר</td>
                     <td>{formatMoney(shippingPrice)}</td>
                   </tr>
                   <tr>
-                    <td colSpan={3}>רווח</td>
+                    <td colSpan={4}>רווח</td>
                     <td>{formatMoney(selected.profit)}</td>
                   </tr>
                 </tfoot>
@@ -964,13 +992,11 @@ export default function Dashboard() {
                   <dt>קמפיין</dt>
                   <dd>{sourceParts.campaign}</dd>
                   <dt>מקור</dt>
-                  <dd>{selected.utm_source || selected.source || 'direct'}</dd>
+                  <dd>{selected.utm_source || selected.source || 'ישיר'}</dd>
                   <dt>בינוני</dt>
                   <dd>{sourceParts.medium}</dd>
                   <dt>סוג מכשיר</dt>
                   <dd>{sourceParts.device}</dd>
-                  <dt>צפיות בעמודים במהלך ההפעלה</dt>
-                  <dd>{sourceParts.pageViews}</dd>
                 </dl>
               </section>
 
@@ -982,7 +1008,7 @@ export default function Dashboard() {
               </section>
 
               <section className="wp-panel">
-                <h3>Datalogics</h3>
+                <h3>דאטה לוג׳יקס</h3>
                 <div className="datalogics-card">
                   <strong>{selected.external_order_id || 'לא שודר'}</strong>
                   <div>
@@ -1072,7 +1098,7 @@ export default function Dashboard() {
           <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)}>
             <option value="">עריכה קבוצתית</option>
             {STATUSES.map((status) => (
-              <option key={status.key} value={status.key}>Change status to {status.label}</option>
+              <option key={status.key} value={status.key}>שינוי מצב ל{status.label}</option>
             ))}
           </select>
           <button type="button" onClick={runBulkAction} disabled={!bulkAction || selectedIds.length === 0 || saving}>
@@ -1103,9 +1129,9 @@ export default function Dashboard() {
               <th>תאריך</th>
               <th>מצב</th>
               <th>סה&quot;כ</th>
-              <th>Profit</th>
-              <th>DATALOGICS</th>
-              <th>Export Status</th>
+              <th>רווח</th>
+              <th>דאטה לוג׳יקס</th>
+              <th>מצב ייצוא</th>
               <th>מקור</th>
             </tr>
           </thead>
