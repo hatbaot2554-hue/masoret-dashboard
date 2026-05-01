@@ -129,10 +129,12 @@ function sourceLabel(order: Order) {
 }
 
 function productUrl(item: OrderItem) {
-  if (typeof item.sourceProductIndex === 'number') return `${PRODUCT_SITE_URL}/products/${item.sourceProductIndex}`;
-  const idAsNumber = Number(item.sourceProductId);
-  if (Number.isFinite(idAsNumber) && idAsNumber >= 0 && idAsNumber < 10000) {
-    return `${PRODUCT_SITE_URL}/products/${idAsNumber}`;
+  const index = Number(item.sourceProductIndex);
+  if (Number.isInteger(index) && index >= 0) {
+    return `${PRODUCT_SITE_URL}/products/${index}`;
+  }
+  if (item.sourceProductId) {
+    return `${PRODUCT_SITE_URL}/products/source/${encodeURIComponent(String(item.sourceProductId))}`;
   }
   return `${PRODUCT_SITE_URL}/products?search=${encodeURIComponent(item.name || '')}`;
 }
