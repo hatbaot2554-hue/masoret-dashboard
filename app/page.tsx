@@ -144,6 +144,27 @@ function openProduct(item: OrderItem) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+function normalizeProductHref(rawHref: string | null) {
+  if (!rawHref) return rawHref;
+  try {
+    const url = new URL(rawHref, window.location.origin);
+    const isDashboardProduct =
+      url.hostname === window.location.hostname &&
+      (url.pathname === '/products' || url.pathname.startsWith('/products/'));
+
+    if (isDashboardProduct) {
+      return `${PRODUCT_SITE_URL}${url.pathname}${url.search}${url.hash}`;
+    }
+
+    return rawHref;
+  } catch {
+    if (rawHref === 'products' || rawHref.startsWith('products/')) {
+      return `${PRODUCT_SITE_URL}/${rawHref}`;
+    }
+    return rawHref;
+  }
+}
+
 function statusChipClass(status: string) {
   return `status-chip ${STATUSES.find((s) => s.key === status)?.chip || 'gray'}`;
 }
@@ -261,6 +282,40 @@ export default function Dashboard() {
   useEffect(() => {
     if (authed) fetchOrders();
   }, [authed]);
+
+  useEffect(() => {
+    if (!authed) return;
+
+    function repairProductLinks() {
+      document.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((link) => {
+        const fixed = normalizeProductHref(link.getAttribute('href'));
+        if (fixed && fixed !== link.getAttribute('href')) {
+          link.setAttribute('href', fixed);
+        }
+      });
+    }
+
+    function handleProductLinkClick(event: MouseEvent) {
+      const link = (event.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!link) return;
+      const fixed = normalizeProductHref(link.getAttribute('href'));
+      if (!fixed || fixed === link.getAttribute('href')) return;
+      event.preventDefault();
+      link.setAttribute('href', fixed);
+      window.open(fixed, '_blank', 'noopener,noreferrer');
+    }
+
+    repairProductLinks();
+    document.addEventListener('mouseover', repairProductLinks, true);
+    document.addEventListener('focusin', repairProductLinks, true);
+    document.addEventListener('click', handleProductLinkClick, true);
+
+    return () => {
+      document.removeEventListener('mouseover', repairProductLinks, true);
+      document.removeEventListener('focusin', repairProductLinks, true);
+      document.removeEventListener('click', handleProductLinkClick, true);
+    };
+  }, [authed, selected, orders]);
 
   async function updateStatus(id: string, status: string) {
     setSaving(true);
