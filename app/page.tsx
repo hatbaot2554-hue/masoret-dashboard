@@ -947,14 +947,14 @@ export default function Dashboard() {
               </table>
 
               <div className="wp-panel slim">
-                <h3>שדות מותאמים</h3>
+                <h3>פרטי מערכת</h3>
                 <div className="custom-fields">
-                  <span>external_order_id</span>
+                  <span>מספר הזמנה אצל הספק</span>
                   <input readOnly value={selected.external_order_id || ''} />
-                  <span>checkout_url</span>
+                  <span>קישור המשך תשלום</span>
                   <input readOnly value={selected.checkout_url || ''} />
-                  <span>auto_submitted</span>
-                  <input readOnly value={selected.auto_submitted ? 'true' : 'false'} />
+                  <span>שודר אוטומטית לספק</span>
+                  <input readOnly value={selected.auto_submitted ? 'כן' : 'לא'} />
                 </div>
               </div>
             </section>
