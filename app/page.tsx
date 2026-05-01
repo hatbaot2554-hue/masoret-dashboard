@@ -5,7 +5,13 @@ import { useEffect, useMemo, useState } from 'react';
 type OrderItem = {
   name?: string;
   sourceProductId?: string;
-  sourceProductIndex?: number;
+  sourceProductIndex?: number | string;
+  productId?: string;
+  variationId?: string;
+  sku?: string;
+  url?: string;
+  sourceUrl?: string;
+  source_url?: string;
   quantity?: number;
   price?: number;
   cost?: number;
@@ -133,8 +139,22 @@ function productUrl(item: OrderItem) {
   if (Number.isInteger(index) && index >= 0) {
     return `${PRODUCT_SITE_URL}/products/${index}`;
   }
-  if (item.sourceProductId) {
-    return `${PRODUCT_SITE_URL}/products/source/${encodeURIComponent(String(item.sourceProductId))}`;
+
+  const directUrl = item.url || item.sourceUrl || item.source_url;
+  if (directUrl) {
+    try {
+      const url = new URL(String(directUrl), PRODUCT_SITE_URL);
+      if (url.hostname === new URL(PRODUCT_SITE_URL).hostname && url.pathname.startsWith('/products')) {
+        return url.toString();
+      }
+    } catch {
+      // Continue to the source-id fallback.
+    }
+  }
+
+  const sourceId = item.sourceProductId || item.productId || item.variationId || item.sku;
+  if (sourceId) {
+    return `${PRODUCT_SITE_URL}/products/source/${encodeURIComponent(String(sourceId))}`;
   }
   return `${PRODUCT_SITE_URL}/products?search=${encodeURIComponent(item.name || '')}`;
 }
