@@ -139,6 +139,11 @@ function productUrl(item: OrderItem) {
   return `${PRODUCT_SITE_URL}/products?search=${encodeURIComponent(item.name || '')}`;
 }
 
+function openProduct(item: OrderItem) {
+  const url = productUrl(item);
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 function statusChipClass(status: string) {
   return `status-chip ${STATUSES.find((s) => s.key === status)?.chip || 'gray'}`;
 }
@@ -585,7 +590,16 @@ export default function Dashboard() {
                     return (
                       <tr key={`${item.name}-${index}`}>
                         <td>
-                          <a href={productUrl(item)} target="_blank" rel="noreferrer">
+                          <a
+                            href={productUrl(item)}
+                            title={`פתח באתר החדש: ${productUrl(item)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              openProduct(item);
+                            }}
+                          >
                             {item.name || item.sourceProductId || 'מוצר'}
                           </a>
                           {item.options && <small>{item.options}</small>}
