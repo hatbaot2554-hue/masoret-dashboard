@@ -42,6 +42,8 @@ type CurrentUser = {
   role: string;
 };
 
+type AdminView = 'dashboard' | 'orders' | 'products' | 'customers' | 'coupons' | 'reports' | 'graphs' | 'settings';
+
 const PRODUCT_SITE_URL = 'https://masoret-website.vercel.app';
 
 const STATUSES = [
@@ -66,6 +68,17 @@ const FIELD_OPTIONS = [
   ['customer', 'לקוחות'],
   ['products', 'מוצרים'],
   ['orderNumber', 'Order Number'],
+];
+
+const NAV_ITEMS: { key: AdminView; label: string }[] = [
+  { key: 'dashboard', label: 'לוח בקרה' },
+  { key: 'orders', label: 'הזמנות' },
+  { key: 'products', label: 'מוצרים' },
+  { key: 'customers', label: 'לקוחות' },
+  { key: 'coupons', label: 'קופונים' },
+  { key: 'reports', label: 'דוחות' },
+  { key: 'graphs', label: 'גרפים' },
+  { key: 'settings', label: 'הגדרות' },
 ];
 
 function dashboardAuthHeaders(): HeadersInit {
@@ -206,6 +219,7 @@ export default function Dashboard() {
   const [bulkAction, setBulkAction] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [activeView, setActiveView] = useState<AdminView>('orders');
 
   useEffect(() => {
     const token = sessionStorage.getItem('dashboard_token');
@@ -275,6 +289,11 @@ export default function Dashboard() {
     setCurrentUser(null);
   }
 
+  function openAdminView(view: AdminView) {
+    setSelected(null);
+    setActiveView(view);
+  }
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return orders.filter((order) => {
@@ -307,7 +326,169 @@ export default function Dashboard() {
     return counts;
   }, [orders]);
 
+  const dashboardStats = useMemo(() => {
+    const revenue = orders.reduce((sum, order) => sum + Number(order.total_price || 0), 0);
+    const cost = orders.reduce((sum, order) => sum + Number(order.cost_price || 0), 0);
+    const profit = orders.reduce((sum, order) => sum + Number(order.profit || 0), 0);
+    const customers = new Set(orders.map((order) => order.customer_email || order.customer_phone || order.customer_name).filter(Boolean));
+    const products = new Set(
+      orders.flatMap((order) => parseItems(order.items).map((item) => item.name || item.sourceProductId).filter(Boolean) as string[])
+    );
+    return {
+      revenue,
+      cost,
+      profit,
+      customers: customers.size,
+      products: products.size,
+      pending: orders.filter((order) => (order.status || 'pending') === 'pending').length,
+    };
+  }, [orders]);
+
+  const topProducts = useMemo(() => {
+    const totals = new Map<string, { qty: number; revenue: number }>();
+    for (const order of orders) {
+      for (const item of parseItems(order.items)) {
+        const name = item.name || item.sourceProductId || 'מוצר';
+        const current = totals.get(name) || { qty: 0, revenue: 0 };
+        current.qty += Number(item.quantity || 1);
+        current.revenue += Number(item.price || 0) * Number(item.quantity || 1);
+        totals.set(name, current);
+      }
+    }
+    return Array.from(totals.entries())
+      .map(([name, value]) => ({ name, ...value }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 8);
+  }, [orders]);
+
+  const sourceStats = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const order of orders) {
+      const label = sourceLabel(order);
+      totals.set(label, (totals.get(label) || 0) + 1);
+    }
+    return Array.from(totals.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+  }, [orders]);
+
   if (!authed) return <LoginScreen />;
+
+  if (activeView !== 'orders') {
+    const maxProductRevenue = Math.max(...topProducts.map((item) => item.revenue), 1);
+    const maxSourceCount = Math.max(...sourceStats.map((item) => item.count), 1);
+    const viewTitle = NAV_ITEMS.find((item) => item.key === activeView)?.label || 'לוח בקרה';
+
+    return (
+      <main className="wp-admin-shell" dir="rtl">
+        <aside className="wp-sidebar">
+          <div className="wp-logo">מסורת</div>
+          {NAV_ITEMS.map((item) => (
+            <button key={item.key} className={item.key === activeView ? 'active' : ''} type="button" onClick={() => openAdminView(item.key)}>
+              {item.label}
+            </button>
+          ))}
+        </aside>
+
+        <section className="wp-main">
+          <header className="wp-topbar">
+            <span>שלום, {currentUser?.fullName || currentUser?.username}</span>
+            <button type="button" onClick={logout}>התנתק</button>
+          </header>
+
+          <div className="admin-view-head">
+            <h1>{viewTitle}</h1>
+            <button type="button" onClick={fetchOrders}>רענון נתונים</button>
+          </div>
+
+          {(activeView === 'dashboard' || activeView === 'reports' || activeView === 'graphs') && (
+            <>
+              <section className="metric-grid">
+                <div><span>הזמנות</span><strong>{orders.length}</strong></div>
+                <div><span>ממתינות</span><strong>{dashboardStats.pending}</strong></div>
+                <div><span>הכנסות</span><strong>{formatMoney(dashboardStats.revenue)}</strong></div>
+                <div><span>רווח</span><strong>{formatMoney(dashboardStats.profit)}</strong></div>
+              </section>
+
+              <section className="analytics-grid">
+                <div className="wp-panel">
+                  <h3>מוצרים מובילים</h3>
+                  <div className="bar-list">
+                    {topProducts.length === 0 ? <p>אין נתוני מוצרים להצגה</p> : topProducts.map((item) => (
+                      <div key={item.name} className="bar-row">
+                        <span>{item.name}</span>
+                        <div><i style={{ width: `${Math.max(8, (item.revenue / maxProductRevenue) * 100)}%` }} /></div>
+                        <strong>{formatMoney(item.revenue)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="wp-panel">
+                  <h3>מקורות הזמנה</h3>
+                  <div className="bar-list compact">
+                    {sourceStats.length === 0 ? <p>אין נתוני מקורות להצגה</p> : sourceStats.map((item) => (
+                      <div key={item.name} className="bar-row">
+                        <span>{item.name}</span>
+                        <div><i style={{ width: `${Math.max(8, (item.count / maxSourceCount) * 100)}%` }} /></div>
+                        <strong>{item.count}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            </>
+          )}
+
+          {activeView === 'products' && (
+            <section className="wp-panel admin-table-panel">
+              <h3>מוצרים מתוך הזמנות</h3>
+              <table className="simple-admin-table">
+                <thead><tr><th>מוצר</th><th>כמות</th><th>מכירות</th></tr></thead>
+                <tbody>
+                  {topProducts.map((item) => (
+                    <tr key={item.name}><td>{item.name}</td><td>{item.qty}</td><td>{formatMoney(item.revenue)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+
+          {activeView === 'customers' && (
+            <section className="wp-panel admin-table-panel">
+              <h3>לקוחות אחרונים</h3>
+              <table className="simple-admin-table">
+                <thead><tr><th>לקוח</th><th>אימייל</th><th>טלפון</th><th>הזמנה אחרונה</th></tr></thead>
+                <tbody>
+                  {orders.slice(0, 12).map((order) => (
+                    <tr key={order.id}>
+                      <td>{order.customer_name}</td>
+                      <td>{order.customer_email}</td>
+                      <td>{order.customer_phone}</td>
+                      <td>#{formatOrderId(order.id)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+
+          {activeView === 'coupons' && (
+            <section className="wp-panel admin-placeholder">
+              <h3>קופונים</h3>
+              <p>אין כרגע מנגנון קופונים במסד הנתונים. הכפתור פעיל ומוכן לחיבור כשנוסיף טבלת קופונים.</p>
+            </section>
+          )}
+
+          {activeView === 'settings' && (
+            <section className="wp-panel admin-placeholder">
+              <h3>הגדרות מערכת</h3>
+              <p>מצב הזמנות אמת אצל הספק כבוי כל עוד לא מוגדר GitHub Secret בשם AUTO_ORDER_SUBMIT=true.</p>
+              <p>הדאשבורד מחובר למסד הנתונים ומציג נתונים חיים מההזמנות.</p>
+            </section>
+          )}
+        </section>
+      </main>
+    );
+  }
 
   if (selected) {
     const items = parseItems(selected.items);
@@ -315,9 +496,9 @@ export default function Dashboard() {
       <main className="wp-admin-shell" dir="rtl">
         <aside className="wp-sidebar">
           <div className="wp-logo">מסורת</div>
-          {['לוח בקרה', 'הזמנות', 'מוצרים', 'לקוחות', 'קופונים', 'דוחות', 'הגדרות'].map((item) => (
-            <button key={item} className={item === 'הזמנות' ? 'active' : ''} type="button">
-              {item}
+          {NAV_ITEMS.map((item) => (
+            <button key={item.key} className={item.key === 'orders' ? 'active' : ''} type="button" onClick={() => openAdminView(item.key)}>
+              {item.label}
             </button>
           ))}
         </aside>
@@ -503,7 +684,17 @@ export default function Dashboard() {
   const allVisibleSelected = filtered.length > 0 && filtered.every((order) => selectedIds.includes(order.id));
 
   return (
-    <main className="orders-admin" dir="rtl">
+    <main className="wp-admin-shell" dir="rtl">
+      <aside className="wp-sidebar">
+        <div className="wp-logo">מסורת</div>
+        {NAV_ITEMS.map((item) => (
+          <button key={item.key} className={item.key === 'orders' ? 'active' : ''} type="button" onClick={() => openAdminView(item.key)}>
+            {item.label}
+          </button>
+        ))}
+      </aside>
+
+      <section className="orders-admin">
       <header className="orders-top">
         <div>
           <strong>הזמנות</strong>
@@ -633,6 +824,7 @@ export default function Dashboard() {
             )}
           </tbody>
         </table>
+      </section>
       </section>
     </main>
   );
