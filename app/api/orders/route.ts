@@ -127,7 +127,8 @@ export async function POST(request: Request) {
       ADD COLUMN IF NOT EXISTS auto_submitted BOOLEAN DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS checkout_url TEXT,
       ADD COLUMN IF NOT EXISTS external_order_id TEXT,
-      ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'
+      ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
+      ADD COLUMN IF NOT EXISTS admin_notes JSONB DEFAULT '[]'::jsonb
     `).catch(() => {})
 
     const result = await pool.query(
@@ -162,9 +163,10 @@ export async function PATCH(request: Request) {
       checkout_url?: string
       external_order_id?: string
       status?: string
+      admin_notes?: unknown
     }
 
-    const { id, auto_submitted, checkout_url, external_order_id, status } = body
+    const { id, auto_submitted, checkout_url, external_order_id, status, admin_notes } = body
 
     if (!id) {
       return NextResponse.json({ error: 'חסר id' }, { status: 400 })
@@ -172,6 +174,8 @@ export async function PATCH(request: Request) {
 
     const updates: string[] = []
     const values: (string | boolean)[] = []
+
+    await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS admin_notes JSONB DEFAULT '[]'::jsonb`).catch(() => {})
 
     if (auto_submitted !== undefined) {
       values.push(auto_submitted)
@@ -188,6 +192,10 @@ export async function PATCH(request: Request) {
     if (status !== undefined) {
       values.push(status)
       updates.push(`status = $${values.length}`)
+    }
+    if (admin_notes !== undefined) {
+      values.push(JSON.stringify(admin_notes))
+      updates.push(`admin_notes = $${values.length}::jsonb`)
     }
 
     if (updates.length === 0) {

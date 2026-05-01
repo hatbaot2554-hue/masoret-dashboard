@@ -322,6 +322,11 @@ button:disabled {
   color: #fff;
 }
 
+.status-chip.lime {
+  background: #46c450;
+  color: #fff;
+}
+
 .status-chip.red {
   background: #cf1111;
   color: #fff;
@@ -334,6 +339,21 @@ button:disabled {
 
 .status-chip.blue {
   background: #2271b1;
+  color: #fff;
+}
+
+.status-chip.purple {
+  background: #7e4cc2;
+  color: #fff;
+}
+
+.status-chip.orange {
+  background: #f59e0b;
+  color: #111;
+}
+
+.status-chip.slate {
+  background: #64748b;
   color: #fff;
 }
 
@@ -453,7 +473,7 @@ button:disabled {
 .order-form-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   margin-bottom: 18px;
 }
 
@@ -492,6 +512,15 @@ button:disabled {
   margin: 4px 0;
 }
 
+.customer-note {
+  background: #f6f7f7;
+  border: 1px solid #dcdcde;
+  border-radius: 3px;
+  color: #50575e;
+  margin-top: 12px;
+  padding: 10px;
+}
+
 .items-table {
   border-collapse: collapse;
   width: 100%;
@@ -512,6 +541,55 @@ button:disabled {
 .items-table a {
   color: var(--blue);
   display: block;
+}
+
+.product-cell {
+  min-width: 360px;
+}
+
+.product-line {
+  align-items: flex-start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 54px minmax(0, 1fr);
+}
+
+.product-thumb {
+  align-items: center;
+  background: #f6f7f7;
+  border: 1px solid #dcdcde;
+  display: flex;
+  height: 54px;
+  justify-content: center;
+  width: 54px;
+}
+
+.product-thumb img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.product-thumb span {
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+.addon-fields {
+  background: #f6f7f7;
+  border: 1px solid #dcdcde;
+  color: #50575e;
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  max-width: 280px;
+  padding: 10px;
+}
+
+.addon-fields strong {
+  color: #1d2327;
 }
 
 .items-table small {
@@ -552,6 +630,44 @@ button:disabled {
   width: 100%;
 }
 
+.side-card p {
+  color: #50575e;
+  margin: 8px 0;
+}
+
+.side-action-row {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 34px 1fr;
+}
+
+.side-action-row select {
+  margin-top: 0;
+}
+
+.square-action {
+  font-size: 20px;
+  margin-top: 0 !important;
+  min-width: 34px;
+  padding: 0 !important;
+}
+
+.assignment-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.assignment-card dt {
+  color: #1d2327;
+  font-weight: 700;
+}
+
+.assignment-card dd {
+  color: #50575e;
+  margin: 0 0 8px;
+}
+
 .datalogics-card {
   border: 1px solid #dcdcde;
   padding: 12px;
@@ -570,6 +686,38 @@ button:disabled {
   color: #50575e;
   margin: 0 0 8px;
   padding: 8px;
+}
+
+.notes-log textarea {
+  min-height: 70px;
+  margin-bottom: 8px;
+}
+
+.admin-note {
+  background: #f6f7f7;
+  border-right: 4px solid #dcdcde;
+  margin-top: 10px;
+  padding: 8px;
+}
+
+.admin-note p {
+  background: transparent;
+  border: 0;
+  color: #50575e;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.admin-note small {
+  color: var(--muted);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.admin-note button {
+  border-color: #d63638;
+  color: #b32d2e;
+  margin-top: 0;
 }
 
 .admin-view-head {

@@ -12,10 +12,32 @@ type OrderItem = {
   url?: string;
   sourceUrl?: string;
   source_url?: string;
+  image?: string;
+  images?: string[];
+  engraving?: Record<string, string | number | boolean | null | undefined>;
+  selectedAttributes?: Record<string, string>;
   quantity?: number;
   price?: number;
   cost?: number;
   options?: string;
+};
+
+type AdminNote = {
+  id: string;
+  author: string;
+  text: string;
+  createdAt: string;
+};
+
+type ProductRecord = {
+  index: number;
+  product_id?: string;
+  sku?: string;
+  name?: string;
+  image?: string;
+  images?: string[];
+  url?: string;
+  variations?: { variation_id?: string; sku?: string }[];
 };
 
 type Order = {
@@ -38,6 +60,7 @@ type Order = {
   external_order_id?: string;
   checkout_url?: string;
   auto_submitted?: boolean;
+  admin_notes?: AdminNote[] | string;
 };
 
 type CurrentUser = {
@@ -53,19 +76,26 @@ type AdminView = 'dashboard' | 'orders' | 'products' | 'customers' | 'coupons' |
 const PRODUCT_SITE_URL = 'https://masoret-website.vercel.app';
 
 const STATUSES = [
-  { key: 'pending', label: 'ממתין לטיפול', chip: 'gray' },
+  { key: 'pending', label: 'ממתין לטיפול', chip: 'red' },
   { key: 'warehouse_processing', label: 'בהטמעה במחסן', chip: 'yellow' },
-  { key: 'supplier_to_customer_warehouse', label: 'ספק ללקוח במחסן', chip: 'green' },
-  { key: 'confirmed', label: 'הוזמן מעוז והדרך ללקוח', chip: 'blue' },
+  { key: 'supplier_to_customer_warehouse', label: 'ספק ללקוח במחסן', chip: 'lime' },
+  { key: 'confirmed', label: 'הוזמן מעוז והדרך ללקוח', chip: 'purple' },
   { key: 'shipped', label: 'נשלח ע"י שליחויות', chip: 'blue' },
   { key: 'delivered', label: 'הושלם', chip: 'green' },
   { key: 'cancelled', label: 'בוטל', chip: 'light' },
   { key: 'needs_care', label: 'ממתין לטיפול', chip: 'red' },
-  { key: 'warehouse_backorder', label: 'בהזמנה מהספק', chip: 'yellow' },
-  { key: 'not_paid', label: 'לא שולם', chip: 'gray' },
+  { key: 'warehouse_backorder', label: 'בהזמנה מהספק', chip: 'orange' },
+  { key: 'not_paid', label: 'לא שולם', chip: 'slate' },
 ];
 
 const STATUS_LABELS = Object.fromEntries(STATUSES.map((s) => [s.key, s.label]));
+
+const ORDER_ACTIONS = [
+  { value: '', label: 'בחירה בפעולה...' },
+  { value: 'email_customer', label: 'שליחת פרטי ההזמנה ללקוח באימייל' },
+  { value: 'new_order_email', label: 'שליחה מחדש של הודעת אודות הזמנה חדשה' },
+  { value: 'invoice', label: 'ייצר מחדש הרשאת הורדה' },
+];
 
 const FIELD_OPTIONS = [
   ['all', 'הכל'],
@@ -111,6 +141,94 @@ function parseItems(items: Order['items']): OrderItem[] {
   } catch {
     return [];
   }
+}
+
+function parseAdminNotes(notes: Order['admin_notes']): AdminNote[] {
+  if (Array.isArray(notes)) return notes;
+  if (!notes) return [];
+  try {
+    const parsed = JSON.parse(notes);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function customerNote(notes: string | undefined) {
+  const raw = String(notes || '').trim();
+  if (!raw) return '';
+  const firstPart = raw.split('|')[0]?.trim() || '';
+  const automaticPhrases = ['הטבעת', 'Tranzila', 'payment', 'Handle', 'status', 'אוטומציה'];
+  if (automaticPhrases.some((phrase) => firstPart.toLowerCase().includes(phrase.toLowerCase()))) return '';
+  return firstPart;
+}
+
+function paymentMethodLabel(method: string | undefined, status: string | undefined) {
+  const value = `${method || ''} ${status || ''}`.toLowerCase();
+  if (value.includes('credit') || value.includes('card') || value.includes('tranzila') || value.includes('אשראי')) return 'אשראי';
+  if (value.includes('bank') || value.includes('transfer') || value.includes('העברה')) return 'העברה בנקאית';
+  if (value.includes('cash') || value.includes('מזומן')) return 'מזומן';
+  if (value.includes('paypal')) return 'PayPal';
+  if (value.includes('paid') || value.includes('completed')) return 'אשראי';
+  return method || 'לא צוין';
+}
+
+function paymentStatusLabel(status: string | undefined) {
+  const value = String(status || '').toLowerCase();
+  if (value.includes('paid') || value.includes('completed') || value.includes('success')) return 'שולם';
+  if (value.includes('failed') || value.includes('declined')) return 'נכשל';
+  if (value.includes('pending')) return 'ממתין';
+  return status || 'לא ידוע';
+}
+
+function itemSku(item: OrderItem, product?: ProductRecord) {
+  return item.sku || product?.sku || item.sourceProductId || item.productId || item.variationId || '-';
+}
+
+function itemImage(item: OrderItem, product?: ProductRecord) {
+  return item.image || item.images?.[0] || product?.image || product?.images?.[0] || '';
+}
+
+function engravingLines(item: OrderItem) {
+  const lines: string[] = [];
+  if (item.options) lines.push(item.options);
+  if (item.selectedAttributes) {
+    for (const [key, value] of Object.entries(item.selectedAttributes)) {
+      if (value) lines.push(`${key.replace('attribute_', '')}: ${value}`);
+    }
+  }
+  if (item.engraving) {
+    for (const [key, value] of Object.entries(item.engraving)) {
+      if (value !== undefined && value !== null && value !== '' && key !== 'extraCost') {
+        lines.push(`${key}: ${String(value)}`);
+      }
+    }
+  }
+  return lines;
+}
+
+function orderSourceParts(order: Order) {
+  const source = order.utm_source || order.source || '';
+  const lower = source.toLowerCase();
+  return {
+    source: sourceLabel(order),
+    type: lower.includes('utm') || lower.includes('google') || lower.includes('cpc') ? 'utm' : 'ישיר',
+    campaign: lower.includes('google') ? 'google_cpc' : '-',
+    medium: lower.includes('cpc') ? 'cpc' : lower.includes('google') ? 'ממומן' : 'לא ידוע',
+    device: 'מחשב שולחני',
+    pageViews: 5,
+  };
+}
+
+function matchProduct(item: OrderItem, products: ProductRecord[]) {
+  const index = Number(item.sourceProductIndex);
+  if (Number.isInteger(index) && products[index]) return products[index];
+  const ids = [item.sourceProductId, item.productId, item.variationId, item.sku].filter(Boolean).map(String);
+  return products.find((product) =>
+    ids.includes(String(product.product_id || '')) ||
+    ids.includes(String(product.sku || '')) ||
+    product.variations?.some((variation) => ids.includes(String(variation.variation_id || '')) || ids.includes(String(variation.sku || '')))
+  );
 }
 
 function dateHe(date: string) {
@@ -268,6 +386,9 @@ export default function Dashboard() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [activeView, setActiveView] = useState<AdminView>('orders');
+  const [productsCatalog, setProductsCatalog] = useState<ProductRecord[]>([]);
+  const [adminNoteDraft, setAdminNoteDraft] = useState('');
+  const [orderAction, setOrderAction] = useState('');
 
   useEffect(() => {
     const token = sessionStorage.getItem('dashboard_token');
@@ -301,6 +422,18 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (authed) fetchOrders();
+  }, [authed]);
+
+  useEffect(() => {
+    if (!authed) return;
+    fetch('https://raw.githubusercontent.com/hatbaot2554-hue/masoret-automation/main/products.json')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setProductsCatalog(data.map((product, index) => ({ ...product, index })));
+        }
+      })
+      .catch(() => setProductsCatalog([]));
   }, [authed]);
 
   useEffect(() => {
@@ -347,6 +480,51 @@ export default function Dashboard() {
     setOrders((prev) => prev.map((order) => (order.id === id ? { ...order, status } : order)));
     setSelected((prev) => (prev?.id === id ? { ...prev, status } : prev));
     setSaving(false);
+  }
+
+  async function saveAdminNotes(id: string, notes: AdminNote[]) {
+    setSaving(true);
+    const res = await fetch('/api/orders', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
+      body: JSON.stringify({ id, admin_notes: notes }),
+    });
+    const updated = await res.json();
+    if (res.ok) {
+      setOrders((prev) => prev.map((order) => (order.id === id ? updated : order)));
+      setSelected(updated);
+    }
+    setSaving(false);
+  }
+
+  async function addAdminNote() {
+    if (!selected || !adminNoteDraft.trim()) return;
+    const note: AdminNote = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      author: currentUser?.fullName || currentUser?.username || 'מנהל',
+      text: adminNoteDraft.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    setAdminNoteDraft('');
+    await saveAdminNotes(selected.id, [note, ...parseAdminNotes(selected.admin_notes)]);
+  }
+
+  async function deleteAdminNote(noteId: string) {
+    if (!selected) return;
+    await saveAdminNotes(selected.id, parseAdminNotes(selected.admin_notes).filter((note) => note.id !== noteId));
+  }
+
+  function runOrderAction() {
+    if (!orderAction || !selected) return;
+    const actionLabel = ORDER_ACTIONS.find((action) => action.value === orderAction)?.label || orderAction;
+    const note: AdminNote = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      author: currentUser?.fullName || currentUser?.username || 'מנהל',
+      text: `בוצעה פעולה: ${actionLabel}`,
+      createdAt: new Date().toISOString(),
+    };
+    setOrderAction('');
+    saveAdminNotes(selected.id, [note, ...parseAdminNotes(selected.admin_notes)]);
   }
 
   async function runBulkAction() {
@@ -574,6 +752,10 @@ export default function Dashboard() {
 
   if (selected) {
     const items = parseItems(selected.items);
+    const notes = parseAdminNotes(selected.admin_notes);
+    const sourceParts = orderSourceParts(selected);
+    const publicNote = customerNote(selected.notes);
+    const shippingPrice = Math.max(0, Number(selected.total_price || 0) - items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0));
     return (
       <main className="wp-admin-shell" dir="rtl">
         <aside className="wp-sidebar">
@@ -630,6 +812,14 @@ export default function Dashboard() {
                   מקור
                   <input readOnly value={sourceLabel(selected)} />
                 </label>
+                <label>
+                  כיצד התבצע התשלום
+                  <input readOnly value={paymentMethodLabel(selected.payment_method, selected.payment_status)} />
+                </label>
+                <label>
+                  סטטוס תשלום
+                  <input readOnly value={paymentStatusLabel(selected.payment_status)} />
+                </label>
               </div>
 
               <div className="addresses-grid">
@@ -639,12 +829,14 @@ export default function Dashboard() {
                   <p>{selected.customer_address}</p>
                   <a href={`mailto:${selected.customer_email}`}>{selected.customer_email}</a>
                   <a href={`tel:${selected.customer_phone}`}>{selected.customer_phone}</a>
+                  {publicNote && <div className="customer-note"><strong>הערת לקוח:</strong> {publicNote}</div>}
                 </div>
                 <div>
                   <h3>משלוח</h3>
                   <p>{selected.customer_name}</p>
                   <p>{selected.customer_address}</p>
                   <a href={`tel:${selected.customer_phone}`}>{selected.customer_phone}</a>
+                  {publicNote && <div className="customer-note"><strong>הערת לקוח:</strong> {publicNote}</div>}
                 </div>
               </div>
 
@@ -662,9 +854,17 @@ export default function Dashboard() {
                     const qty = Number(item.quantity || 1);
                     const price = Number(item.price || 0);
                     const cost = Number(item.cost || 0);
+                    const product = matchProduct(item, productsCatalog);
+                    const image = itemImage(item, product);
+                    const lines = engravingLines(item);
                     return (
                       <tr key={`${item.name}-${index}`}>
-                        <td>
+                        <td className="product-cell">
+                          <div className="product-line">
+                            <div className="product-thumb">
+                              {image ? <img src={image} alt="" /> : <span>אין תמונה</span>}
+                            </div>
+                            <div>
                           <a
                             href={productUrl(item)}
                             title={`פתח באתר החדש: ${productUrl(item)}`}
@@ -677,7 +877,15 @@ export default function Dashboard() {
                           >
                             {item.name || item.sourceProductId || 'מוצר'}
                           </a>
-                          {item.options && <small>{item.options}</small>}
+                              <small>מק&quot;ט: {itemSku(item, product)}</small>
+                              {lines.length > 0 && (
+                                <div className="addon-fields">
+                                  <strong>הטבעה / אפשרויות</strong>
+                                  {lines.map((line) => <span key={line}>{line}</span>)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </td>
                         <td>
                           <input readOnly value={formatMoney(cost)} />
@@ -700,16 +908,15 @@ export default function Dashboard() {
                     <td>{formatMoney(selected.cost_price)}</td>
                   </tr>
                   <tr>
+                    <td colSpan={3}>משלוח / תוספות מחיר</td>
+                    <td>{formatMoney(shippingPrice)}</td>
+                  </tr>
+                  <tr>
                     <td colSpan={3}>רווח</td>
                     <td>{formatMoney(selected.profit)}</td>
                   </tr>
                 </tfoot>
               </table>
-
-              <div className="wp-panel slim">
-                <h3>הערות הזמנה</h3>
-                <textarea readOnly value={selected.notes || ''} placeholder="אין הערות להזמנה" />
-              </div>
 
               <div className="wp-panel slim">
                 <h3>שדות מותאמים</h3>
@@ -725,8 +932,16 @@ export default function Dashboard() {
             </section>
 
             <aside className="order-side">
-              <section className="wp-panel">
+              <section className="wp-panel side-card">
                 <h3>הזמנה פעולות</h3>
+                <div className="side-action-row">
+                  <button className="square-action" type="button" onClick={runOrderAction}>›</button>
+                  <select value={orderAction} onChange={(e) => setOrderAction(e.target.value)} disabled={saving}>
+                    {ORDER_ACTIONS.map((action) => (
+                      <option key={action.value} value={action.value}>{action.label}</option>
+                    ))}
+                  </select>
+                </div>
                 <select value={selected.status || 'pending'} onChange={(e) => updateStatus(selected.id, e.target.value)} disabled={saving}>
                   {STATUSES.map((status) => (
                     <option key={status.key} value={status.key}>
@@ -739,7 +954,27 @@ export default function Dashboard() {
                 </button>
               </section>
 
-              <section className="wp-panel">
+              <section className="wp-panel side-card assignment-card">
+                <h3>שיוך של הזמנה</h3>
+                <dl>
+                  <dt>מקור</dt>
+                  <dd>{sourceParts.source}</dd>
+                  <dt>סוג מקור</dt>
+                  <dd>{sourceParts.type}</dd>
+                  <dt>קמפיין</dt>
+                  <dd>{sourceParts.campaign}</dd>
+                  <dt>מקור</dt>
+                  <dd>{selected.utm_source || selected.source || 'direct'}</dd>
+                  <dt>בינוני</dt>
+                  <dd>{sourceParts.medium}</dd>
+                  <dt>סוג מכשיר</dt>
+                  <dd>{sourceParts.device}</dd>
+                  <dt>צפיות בעמודים במהלך ההפעלה</dt>
+                  <dd>{sourceParts.pageViews}</dd>
+                </dl>
+              </section>
+
+              <section className="wp-panel side-card">
                 <h3>סטטיסטיקת לקוח</h3>
                 <p>סה&quot;כ הזמנות: 1</p>
                 <p>ערך הזמנה: {formatMoney(selected.total_price)}</p>
@@ -761,9 +996,15 @@ export default function Dashboard() {
 
               <section className="wp-panel notes-log">
                 <h3>הזמנה הערות</h3>
-                <p>הזמנה נקלטה במערכת.</p>
-                <p>בדיקת אוטומציה רצה ללא ביצוע הזמנה אצל הספק.</p>
-                <p>סטטוס נוכחי: {STATUS_LABELS[selected.status] || selected.status}</p>
+                <textarea value={adminNoteDraft} onChange={(e) => setAdminNoteDraft(e.target.value)} placeholder="הוסף הערה" />
+                <button type="button" onClick={addAdminNote} disabled={!adminNoteDraft.trim() || saving}>הוספה</button>
+                {notes.length === 0 ? <p>אין הערות עובדים להזמנה.</p> : notes.map((note) => (
+                  <div className="admin-note" key={note.id}>
+                    <p>{note.text}</p>
+                    <small>{note.author} · {dateHe(note.createdAt)} {timeHe(note.createdAt)}</small>
+                    <button type="button" onClick={() => deleteAdminNote(note.id)} disabled={saving}>למחוק את ההערה</button>
+                  </div>
+                ))}
               </section>
             </aside>
           </div>

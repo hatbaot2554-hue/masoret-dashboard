@@ -41,12 +41,15 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       checkout_url?: string
       external_order_id?: string
       status?: string
+      admin_notes?: unknown
     }
 
-    const { auto_submitted, checkout_url, external_order_id, status } = body
+    const { auto_submitted, checkout_url, external_order_id, status, admin_notes } = body
 
     const updates: string[] = []
     const values: (string | boolean)[] = []
+
+    await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS admin_notes JSONB DEFAULT '[]'::jsonb`).catch(() => {})
 
     if (auto_submitted !== undefined) {
       values.push(auto_submitted)
@@ -63,6 +66,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     if (status !== undefined) {
       values.push(status)
       updates.push(`status = $${values.length}`)
+    }
+    if (admin_notes !== undefined) {
+      values.push(JSON.stringify(admin_notes))
+      updates.push(`admin_notes = $${values.length}::jsonb`)
     }
 
     if (updates.length === 0) {
