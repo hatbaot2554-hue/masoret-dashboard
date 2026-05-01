@@ -3,25 +3,593 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --admin-bg: #f0f0f1;
+  --panel: #ffffff;
+  --border: #c3c4c7;
+  --muted: #646970;
+  --text: #1d2327;
+  --blue: #2271b1;
+  --blue-dark: #135e96;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
+  background: var(--admin-bg);
+  color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.login-shell {
+  align-items: center;
+  background: #f0f0f1;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.login-box {
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  max-width: 380px;
+  padding: 28px;
+  width: 100%;
+}
+
+.login-mark {
+  color: var(--blue);
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.login-box h1 {
+  font-size: 20px;
+  margin: 0 0 18px;
+  text-align: center;
+}
+
+.login-box input {
+  border: 1px solid #8c8f94;
+  border-radius: 3px;
+  display: block;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.login-box button,
+.orders-top button,
+.filters-row button,
+.bulk-row button,
+.order-title-row button,
+.wp-topbar button,
+.order-side button {
+  background: #f6f7f7;
+  border: 1px solid var(--blue);
+  border-radius: 3px;
+  color: var(--blue);
+  min-height: 32px;
+  padding: 0 12px;
+}
+
+.login-box button {
+  background: var(--blue);
+  color: #fff;
+  width: 100%;
+}
+
+.login-error {
+  background: #fcf0f1;
+  border-right: 4px solid #d63638;
+  color: #8a2424;
+  margin: 8px 0;
+  padding: 10px;
+}
+
+.orders-admin {
+  direction: rtl;
+  min-height: 100vh;
+  padding: 0 14px 24px;
+}
+
+.orders-top {
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  margin: 0 -14px 18px;
+  min-height: 48px;
+  padding: 8px 18px;
+}
+
+.orders-top strong {
+  display: block;
+  font-size: 20px;
+}
+
+.orders-top span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+}
+
+.orders-top > div:last-child,
+.filters-row,
+.bulk-row,
+.bulk-actions,
+.pagination {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.status-links {
+  color: var(--blue);
+  line-height: 2.1;
+  margin-bottom: 14px;
+  text-align: right;
+}
+
+.status-links button {
+  background: none;
+  border: 0;
+  color: var(--blue);
+  padding: 0 5px;
+}
+
+.status-links button::after {
+  color: #8c8f94;
+  content: " |";
+  padding-right: 8px;
+}
+
+.status-links button.active {
+  color: #000;
+  font-weight: 700;
+}
+
+.filters-row {
+  justify-content: flex-start;
+  margin-bottom: 16px;
+}
+
+.filters-row input,
+.filters-row select,
+.bulk-row input,
+.bulk-row select,
+.order-form-grid input,
+.order-form-grid select,
+.order-side select,
+.custom-fields input {
+  background: #fff;
+  border: 1px solid #8c8f94;
+  border-radius: 3px;
+  color: var(--text);
+  min-height: 34px;
+  padding: 5px 8px;
+}
+
+.filters-row input {
+  min-width: 220px;
+}
+
+.bulk-row {
+  border-bottom: 1px solid var(--border);
+  justify-content: space-between;
+  padding-bottom: 10px;
+}
+
+.pagination input {
+  text-align: center;
+  width: 54px;
+}
+
+.orders-table-wrap {
+  background: #fff;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.orders-table {
+  border-collapse: collapse;
+  min-width: 1080px;
+  width: 100%;
+}
+
+.orders-table th,
+.orders-table td {
+  border-bottom: 1px solid #dcdcde;
+  padding: 14px 12px;
+  text-align: right;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.orders-table th {
+  color: #2c3338;
+  font-weight: 400;
+}
+
+.orders-table tbody tr:nth-child(odd) {
+  background: #f6f7f7;
+}
+
+.orders-table tbody tr:hover {
+  background: #f0f6fc;
+}
+
+.check-col {
+  text-align: center !important;
+  width: 38px;
+}
+
+.order-link {
+  background: none;
+  border: 0;
+  color: var(--blue);
+  display: block;
+  font-weight: 700;
+  padding: 0;
+  text-align: right;
+}
+
+.orders-table small {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.icon-button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #50575e;
+  border-radius: 4px;
+  color: #1d2327;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  margin-left: 4px;
+  min-width: 30px;
+  padding: 0 6px;
+}
+
+.datalogics-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.ship-button {
+  background: #fff;
+  border: 1px solid #50575e;
+  border-radius: 4px;
+  color: #000;
+  margin-right: 5px;
+  min-height: 30px;
+  padding: 0 8px;
+}
+
+.status-chip {
+  border-radius: 4px;
+  display: inline-block;
+  font-size: 12px;
+  min-width: 82px;
+  padding: 8px 12px;
+  text-align: center;
+}
+
+.status-chip.yellow {
+  background: #fff200;
+  color: #111;
+}
+
+.status-chip.green {
+  background: #54d836;
+  color: #fff;
+}
+
+.status-chip.red {
+  background: #cf1111;
+  color: #fff;
+}
+
+.status-chip.gray {
+  background: #e5e5e5;
+  color: #333;
+}
+
+.status-chip.blue {
+  background: #2271b1;
+  color: #fff;
+}
+
+.status-chip.light {
+  background: #eee;
+  color: #646970;
+}
+
+.empty-row {
+  color: var(--muted);
+  padding: 48px !important;
+  text-align: center !important;
+}
+
+.wp-admin-shell {
+  background: var(--admin-bg);
+  color: var(--text);
+  direction: rtl;
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  min-height: 100vh;
+}
+
+.wp-sidebar {
+  background: #1d2327;
+  color: #c3c4c7;
+  padding-top: 10px;
+}
+
+.wp-logo {
+  border-bottom: 1px solid #2c3338;
+  color: #fff;
+  font-weight: 700;
+  padding: 12px 16px;
+}
+
+.wp-sidebar button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  display: block;
+  min-height: 34px;
+  padding: 8px 16px;
+  text-align: right;
+  width: 100%;
+}
+
+.wp-sidebar button.active,
+.wp-sidebar button:hover {
+  background: #2271b1;
+  color: #fff;
+}
+
+.wp-main {
+  min-width: 0;
+}
+
+.wp-topbar {
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 7px 14px;
+}
+
+.order-title-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  padding: 18px 16px 10px;
+}
+
+.order-title-row h1 {
+  font-size: 22px;
+  font-weight: 400;
+  margin: 0;
+}
+
+.order-edit-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  padding: 0 16px 32px;
+}
+
+.wp-panel {
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+  margin-bottom: 14px;
+  padding: 14px;
+}
+
+.wp-panel.slim {
+  margin-top: 16px;
+}
+
+.wp-panel h3,
+.panel-title {
+  border-bottom: 1px solid #dcdcde;
+  font-size: 14px;
+  font-weight: 700;
+  margin: -14px -14px 14px;
+  padding: 12px 14px;
+}
+
+.panel-title span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  margin-top: 6px;
+}
+
+.order-form-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, 1fr);
+  margin-bottom: 18px;
+}
+
+.order-form-grid label {
+  color: var(--muted);
+  display: grid;
+  gap: 5px;
+}
+
+.addresses-grid {
+  border: 1px solid #dcdcde;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 18px;
+}
+
+.addresses-grid > div {
+  padding: 14px;
+}
+
+.addresses-grid > div:first-child {
+  border-left: 1px solid #dcdcde;
+}
+
+.addresses-grid h3 {
+  border: 0;
+  font-size: 14px;
+  margin: 0 0 10px;
+  padding: 0;
+}
+
+.addresses-grid p,
+.addresses-grid a {
+  color: #50575e;
+  display: block;
+  margin: 4px 0;
+}
+
+.items-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.items-table th,
+.items-table td {
+  border-bottom: 1px solid #dcdcde;
+  padding: 12px;
+  text-align: right;
+  vertical-align: top;
+}
+
+.items-table th {
+  background: #f6f7f7;
+}
+
+.items-table a {
+  color: var(--blue);
+  display: block;
+}
+
+.items-table small {
+  color: var(--muted);
+  display: block;
+  margin-top: 4px;
+}
+
+.items-table input {
+  border: 1px solid #c3c4c7;
+  border-radius: 3px;
+  max-width: 110px;
+  padding: 6px;
+}
+
+.items-table tfoot td {
+  font-weight: 700;
+}
+
+.wp-panel textarea {
+  border: 1px solid #c3c4c7;
+  min-height: 74px;
+  padding: 8px;
+  resize: vertical;
+  width: 100%;
+}
+
+.custom-fields {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 180px 1fr;
+}
+
+.order-side select,
+.order-side button {
+  display: block;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.datalogics-card {
+  border: 1px solid #dcdcde;
+  padding: 12px;
+  text-align: center;
+}
+
+.datalogics-card strong,
+.datalogics-card span {
+  display: block;
+  margin: 8px 0;
+}
+
+.notes-log p {
+  background: #f6f7f7;
+  border-right: 4px solid #dcdcde;
+  color: #50575e;
+  margin: 0 0 8px;
+  padding: 8px;
+}
+
+@media (max-width: 980px) {
+  .wp-admin-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .wp-sidebar {
+    display: none;
+  }
+
+  .order-edit-grid,
+  .order-form-grid,
+  .addresses-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bulk-row,
+  .filters-row {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
