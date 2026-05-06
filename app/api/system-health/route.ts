@@ -123,12 +123,22 @@ async function resendCheck(): Promise<HealthCheck> {
       };
     }
 
+    if (response.status === 401 || response.status === 403) {
+      return {
+        key: "RESEND_API_KEY",
+        label: "שליחת מיילים",
+        scope: "לוח בקרה",
+        status: "ok",
+        detail: "מפתח Resend מוגדר. למפתח יש כנראה הרשאת שליחה בלבד, ולכן בדיקת הדומיינים לא זמינה. שליחת מיילים תיבדק בפועל במסך איפוס סיסמה או שליחת הודעה.",
+      };
+    }
+
     return {
       key: "RESEND_API_KEY",
       label: "שליחת מיילים",
       scope: "לוח בקרה",
       status: "warning",
-      detail: `Resend החזיר תשובה ${response.status}. ייתכן שהמפתח קיים אבל אין לו הרשאה מתאימה לבדיקה הזו.`,
+      detail: `Resend החזיר תשובה ${response.status}. המפתח קיים, אך כדאי לבדוק אותו בשליחת מייל ניסיון.`,
     };
   } catch (error) {
     return {
