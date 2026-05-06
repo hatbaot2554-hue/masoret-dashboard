@@ -1,0 +1,32 @@
+name: Apply Management Tab
+
+on:
+  push:
+    paths:
+      - scripts/apply_management_tab.py
+      - .github/workflows/apply-management-tab.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-management-tab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Patch dashboard page
+        run: python scripts/apply_management_tab.py
+      - name: Commit dashboard update
+        run: |
+          if git diff --quiet; then
+            echo "No dashboard changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app/page.tsx
+          git commit -m "Add management tab to dashboard"
+          git push
