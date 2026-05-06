@@ -25,6 +25,22 @@ function sign(value: string): string {
   return crypto.createHmac("sha256", getAuthSecret()).update(value).digest("base64url");
 }
 
+function canViewSystemHealth(payload: { username?: string; role?: string; exp?: number }): boolean {
+  if (!payload?.username || (payload.exp && payload.exp <= Date.now())) return false;
+
+  const allowedUsers = (process.env.DASHBOARD_OWNER_USERNAMES || "admin")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const role = String(payload.role || "").trim().toLowerCase();
+  const username = String(payload.username || "").trim().toLowerCase();
+
+  return (
+    allowedUsers.includes(username) ||
+    ["admin", "owner", "super_admin", "מנהל", "בעלים"].includes(role)
+  );
+}
+
 function isDashboardRequest(request: Request): boolean {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) return false;
@@ -39,7 +55,7 @@ function isDashboardRequest(request: Request): boolean {
     }
 
     const payload = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf8"));
-    return Boolean(payload?.username && (!payload.exp || payload.exp > Date.now()));
+    return canViewSystemHealth(payload);
   } catch {
     return false;
   }
