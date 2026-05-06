@@ -77,7 +77,24 @@ type CurrentUser = {
   role: string;
 };
 
-type AdminView = 'dashboard' | 'orders' | 'products' | 'customers' | 'coupons' | 'reports' | 'graphs' | 'settings';
+type CheckStatus = 'ok' | 'missing' | 'warning' | 'error' | 'unknown';
+
+type HealthCheck = {
+  key: string;
+  label: string;
+  scope: string;
+  status: CheckStatus;
+  detail: string;
+};
+
+type HealthResponse = {
+  generatedAt: string;
+  safe: boolean;
+  message: string;
+  checks: HealthCheck[];
+};
+
+type AdminView = 'dashboard' | 'orders' | 'products' | 'customers' | 'coupons' | 'reports' | 'graphs' | 'settings' | 'management';
 
 const PRODUCT_SITE_URL = 'https://masoret-website.vercel.app';
 
@@ -121,6 +138,7 @@ const NAV_ITEMS: { key: AdminView; label: string }[] = [
   { key: 'reports', label: 'דוחות' },
   { key: 'graphs', label: 'גרפים' },
   { key: 'settings', label: 'הגדרות' },
+  { key: 'management', label: 'ניהול' },
 ];
 
 function dashboardAuthHeaders(): HeadersInit {
@@ -319,6 +337,35 @@ function statusChipClass(status: string) {
   return `status-chip ${STATUSES.find((s) => s.key === status)?.chip || 'gray'}`;
 }
 
+function systemStatusLabel(status: CheckStatus) {
+  switch (status) {
+    case 'ok':
+      return 'פעיל';
+    case 'missing':
+      return 'חסר';
+    case 'warning':
+      return 'דורש בדיקה';
+    case 'error':
+      return 'שגיאה';
+    default:
+      return 'לא נבדק מכאן';
+  }
+}
+
+function systemStatusClass(status: CheckStatus) {
+  switch (status) {
+    case 'ok':
+      return 'status-chip green';
+    case 'missing':
+    case 'error':
+      return 'status-chip red';
+    case 'warning':
+      return 'status-chip yellow';
+    default:
+      return 'status-chip slate';
+  }
+}
+
 function IconButton({ title, children, onClick }: { title: string; children: React.ReactNode; onClick?: () => void }) {
   return (
     <button className="icon-button" type="button" title={title} onClick={onClick}>
@@ -401,6 +448,9 @@ export default function Dashboard() {
   const [productsCatalog, setProductsCatalog] = useState<ProductRecord[]>([]);
   const [adminNoteDraft, setAdminNoteDraft] = useState('');
   const [orderAction, setOrderAction] = useState('');
+  const [systemHealth, setSystemHealth] = useState<HealthResponse | null>(null);
+  const [systemHealthError, setSystemHealthError] = useState('');
+  const [systemHealthLoading, setSystemHealthLoading] = useState(false);
 
   useEffect(() => {
     const token = sessionStorage.getItem('dashboard_token');
@@ -435,6 +485,27 @@ export default function Dashboard() {
   useEffect(() => {
     if (authed) fetchOrders();
   }, [authed]);
+
+  const normalizedRole = (currentUser?.role || '').trim().toLowerCase();
+  const canManageSystem =
+    currentUser?.username === 'admin' ||
+    ['admin', 'owner', 'super_admin', 'מנהל', 'בעלים'].includes(normalizedRole);
+  const visibleNavItems = NAV_ITEMS.filter((item) => item.key !== 'management' || canManageSystem);
+
+  useEffect(() => {
+    if (!authed || activeView !== 'management' || !canManageSystem) return;
+
+    setSystemHealthLoading(true);
+    setSystemHealthError('');
+    fetch('/api/system-health', { headers: dashboardAuthHeaders() })
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || 'לא ניתן לטעון את בדיקות המערכת.');
+        setSystemHealth(data);
+      })
+      .catch((error) => setSystemHealthError(error.message || 'לא ניתן לטעון את בדיקות המערכת.'))
+      .finally(() => setSystemHealthLoading(false));
+  }, [activeView, authed, canManageSystem]);
 
   useEffect(() => {
     if (!authed) return;
@@ -653,7 +724,7 @@ export default function Dashboard() {
       <main className="wp-admin-shell" dir="rtl">
         <aside className="wp-sidebar">
           <div className="wp-logo">מסורת</div>
-          {NAV_ITEMS.map((item) => (
+          {visibleNavItems.map((item) => (
             <button key={item.key} className={item.key === activeView ? 'active' : ''} type="button" onClick={() => openAdminView(item.key)}>
               {item.label}
             </button>
@@ -757,6 +828,61 @@ export default function Dashboard() {
               <p>הדאשבורד מחובר למסד הנתונים ומציג נתונים חיים מההזמנות.</p>
             </section>
           )}
+
+          {activeView === 'management' && (
+            canManageSystem ? (
+              <section className="wp-panel admin-table-panel">
+                <h3>ניהול מערכת</h3>
+                <p>כאן מרוכזות בדיקות החיבורים והמפתחות של לוח הבקרה ואתר הלקוחות. הערכים עצמם לא מוצגים.</p>
+
+                {systemHealthLoading && <p>טוען בדיקות מערכת...</p>}
+                {systemHealthError && <div className="login-error">{systemHealthError}</div>}
+
+                {systemHealth && (
+                  <>
+                    <div className="metric-grid">
+                      <div><span>בדיקות</span><strong>{systemHealth.checks.length}</strong></div>
+                      <div><span>פעיל</span><strong>{systemHealth.checks.filter((check) => check.status === 'ok').length}</strong></div>
+                      <div><span>דורש טיפול</span><strong>{systemHealth.checks.filter((check) => ['missing', 'warning', 'error'].includes(check.status)).length}</strong></div>
+                      <div><span>לא נבדק מכאן</span><strong>{systemHealth.checks.filter((check) => check.status === 'unknown').length}</strong></div>
+                    </div>
+
+                    <table className="simple-admin-table">
+                      <thead>
+                        <tr>
+                          <th>מערכת</th>
+                          <th>בדיקה</th>
+                          <th>מצב</th>
+                          <th>פירוט</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {systemHealth.checks.map((check) => (
+                          <tr key={`${check.scope}-${check.key}`}>
+                            <td>{check.scope}</td>
+                            <td>
+                              <strong>{check.label}</strong>
+                              <small>{check.key}</small>
+                            </td>
+                            <td><span className={systemStatusClass(check.status)}>{systemStatusLabel(check.status)}</span></td>
+                            <td>{check.detail}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    <p>עודכן לאחרונה: {new Date(systemHealth.generatedAt).toLocaleString('he-IL')}</p>
+                  </>
+                )}
+              </section>
+            ) : (
+              <section className="wp-panel admin-placeholder">
+                <h3>אין הרשאה</h3>
+                <p>לשונית ניהול פתוחה רק למנהל מערכת או לבעלים.</p>
+              </section>
+            )
+          )}
+
         </section>
       </main>
     );
@@ -772,8 +898,8 @@ export default function Dashboard() {
       <main className="wp-admin-shell" dir="rtl">
         <aside className="wp-sidebar">
           <div className="wp-logo">מסורת</div>
-          {NAV_ITEMS.map((item) => (
-            <button key={item.key} className={item.key === 'orders' ? 'active' : ''} type="button" onClick={() => openAdminView(item.key)}>
+          {visibleNavItems.map((item) => (
+            <button key={item.key} className={item.key === activeView ? 'active' : ''} type="button" onClick={() => openAdminView(item.key)}>
               {item.label}
             </button>
           ))}
@@ -1045,8 +1171,8 @@ export default function Dashboard() {
     <main className="wp-admin-shell" dir="rtl">
       <aside className="wp-sidebar">
         <div className="wp-logo">מסורת</div>
-        {NAV_ITEMS.map((item) => (
-          <button key={item.key} className={item.key === 'orders' ? 'active' : ''} type="button" onClick={() => openAdminView(item.key)}>
+        {visibleNavItems.map((item) => (
+          <button key={item.key} className={item.key === activeView ? 'active' : ''} type="button" onClick={() => openAdminView(item.key)}>
             {item.label}
           </button>
         ))}
