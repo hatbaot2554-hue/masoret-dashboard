@@ -12,6 +12,8 @@ type HealthCheck = {
   detail: string;
 };
 
+const WEBSITE_HEALTH_URL = process.env.WEBSITE_HEALTH_URL || "https://masoret-website.vercel.app/api/system-health";
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
@@ -171,10 +173,44 @@ function externalSecretCheck(name: string, label: string, scope: string): Health
   };
 }
 
+async function websiteHealthChecks(): Promise<HealthCheck[]> {
+  try {
+    const response = await fetch(WEBSITE_HEALTH_URL, { cache: "no-store" });
+    if (!response.ok) {
+      return [
+        {
+          key: "WEBSITE_HEALTH",
+          label: "בדיקות אתר הלקוחות",
+          scope: "אתר הלקוחות",
+          status: "warning",
+          detail: `לוח הבקרה לא הצליח לקרוא את בדיקת אתר הלקוחות. תשובה: ${response.status}. ייתכן שצריך לפרוס את אתר הלקוחות מחדש.`,
+        },
+      ];
+    }
+
+    const data = await response.json();
+    if (!Array.isArray(data?.checks)) return [];
+    return data.checks;
+  } catch (error) {
+    return [
+      {
+        key: "WEBSITE_HEALTH",
+        label: "בדיקות אתר הלקוחות",
+        scope: "אתר הלקוחות",
+        status: "warning",
+        detail: error instanceof Error ? error.message : "בדיקת אתר הלקוחות נכשלה.",
+      },
+    ];
+  }
+}
+
 export async function GET(request: Request) {
   if (!isDashboardRequest(request)) {
     return NextResponse.json({ error: "לא מורשה" }, { status: 401 });
   }
+
+  const websiteChecks = await websiteHealthChecks();
+  const websiteKeys = new Set(websiteChecks.map((check) => check.key));
 
   const checks: HealthCheck[] = [
     await databaseCheck(),
@@ -185,8 +221,9 @@ export async function GET(request: Request) {
       "לוח בקרה",
       "לא מוגדר סוד ייעודי לחתימת התחברות. כרגע המערכת תשתמש בערך גיבוי, ומומלץ להגדיר סוד קבוע."
     ),
-    externalSecretCheck("OPENAI_API_KEY", "OpenAI לשירות AI", "אתר הלקוחות"),
-    externalSecretCheck("GEMINI_API_KEY", "Gemini לשירות AI", "אתר הלקוחות"),
+    ...websiteChecks,
+    ...(!websiteKeys.has("OPENAI_API_KEY") ? [externalSecretCheck("OPENAI_API_KEY", "OpenAI לשירות AI", "אתר הלקוחות")] : []),
+    ...(!websiteKeys.has("GEMINI_API_KEY") ? [externalSecretCheck("GEMINI_API_KEY", "Gemini לשירות AI", "אתר הלקוחות")] : []),
     externalSecretCheck("SOURCE_EMAIL", "אימייל לאתר המקורי", "אוטומציית הזמנות"),
     externalSecretCheck("SOURCE_PASSWORD", "סיסמה לאתר המקורי", "אוטומציית הזמנות"),
     externalSecretCheck("AUTO_ORDER_SUBMIT", "אישור שליחת הזמנות בפועל", "אוטומציית הזמנות"),
