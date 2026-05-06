@@ -45,30 +45,67 @@ const statusBackground: Record<CheckStatus, string> = {
 export default function SystemHealthPage() {
   const [data, setData] = useState<HealthResponse | null>(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [token, setToken] = useState<string | null>(null);
 
-  useEffect(() => {
-    const token = sessionStorage.getItem("dashboard_token");
-    if (!token) {
-      setError("צריך להתחבר ללוח הבקרה לפני צפייה בבדיקות המערכת.");
-      setLoading(false);
-      return;
-    }
-
+  function loadHealth(authToken: string) {
+    setLoading(true);
+    setError("");
     fetch("/api/system-health", {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${authToken}` },
       cache: "no-store",
     })
       .then(async (response) => {
         if (!response.ok) {
-          throw new Error("לא ניתן לטעון את בדיקת המערכת.");
+          const body = await response.json().catch(() => null);
+          throw new Error(body?.error || "לא ניתן לטעון את בדיקת המערכת.");
         }
         return response.json();
       })
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : "שגיאה לא ידועה"))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    const savedToken = sessionStorage.getItem("dashboard_token");
+    if (savedToken) {
+      setToken(savedToken);
+      loadHealth(savedToken);
+    }
   }, []);
+
+  async function login() {
+    if (!username || !password) {
+      setError("יש להזין שם משתמש וסיסמה");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "login", username, password }),
+      });
+      const result = await response.json();
+      if (!result.success || !result.token) {
+        setError(result.error || "הכניסה נכשלה");
+        return;
+      }
+      sessionStorage.setItem("dashboard_token", result.token);
+      sessionStorage.setItem("dashboard_user", JSON.stringify(result.user));
+      setToken(result.token);
+      loadHealth(result.token);
+    } catch {
+      setError("שגיאת חיבור לשרת");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <main style={styles.page}>
@@ -76,9 +113,29 @@ export default function SystemHealthPage() {
         <p style={styles.eyebrow}>ניהול</p>
         <h1 style={styles.title}>בדיקת חיבורים ומפתחות</h1>
         <p style={styles.subtitle}>
-          כאן אפשר לראות אילו חיבורים זמינים בלוח הבקרה ואילו חיבורים נמצאים במערכות אחרות שצריך לבדוק בנפרד.
+          אזור פרטי לבעלים או למנהל מערכת. הבדיקה לא מציגה ערכי מפתחות, רק מצב כללי.
         </p>
       </section>
+
+      {!token && (
+        <section style={styles.loginBox}>
+          <h2 style={styles.loginTitle}>כניסה לאזור הבדיקות</h2>
+          <input style={styles.input} value={username} onChange={(event) => setUsername(event.target.value)} placeholder="שם משתמש" />
+          <input
+            style={styles.input}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="סיסמה"
+            type="password"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") login();
+            }}
+          />
+          <button style={styles.button} type="button" onClick={login} disabled={loading}>
+            {loading ? "מתחבר..." : "כניסה"}
+          </button>
+        </section>
+      )}
 
       {loading && <div style={styles.notice}>טוען בדיקה...</div>}
       {error && <div style={{ ...styles.notice, ...styles.error }}>{error}</div>}
@@ -145,6 +202,36 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#475467",
     fontSize: 17,
     lineHeight: 1.65,
+  },
+  loginBox: {
+    maxWidth: 420,
+    margin: "0 auto 20px",
+    padding: 20,
+    border: "1px solid #d0d5dd",
+    borderRadius: 8,
+    background: "#ffffff",
+    display: "grid",
+    gap: 12,
+  },
+  loginTitle: {
+    margin: 0,
+    fontSize: 22,
+  },
+  input: {
+    border: "1px solid #d0d5dd",
+    borderRadius: 8,
+    padding: "12px 14px",
+    fontSize: 16,
+  },
+  button: {
+    border: 0,
+    borderRadius: 8,
+    padding: "12px 14px",
+    background: "#111827",
+    color: "white",
+    fontSize: 16,
+    fontWeight: 700,
+    cursor: "pointer",
   },
   notice: {
     maxWidth: 1040,
