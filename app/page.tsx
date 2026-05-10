@@ -718,6 +718,9 @@ export default function Dashboard() {
     return counts;
   }, [orders]);
 
+  const aiDraftOrders = useMemo(() => orders.filter(isAiDraftOrder), [orders]);
+  const aiSafeOrders = useMemo(() => orders.filter(isAiSafeOrder), [orders]);
+
   const dashboardStats = useMemo(() => {
     const revenue = orders.reduce((sum, order) => sum + Number(order.total_price || 0), 0);
     const cost = orders.reduce((sum, order) => sum + Number(order.cost_price || 0), 0);
