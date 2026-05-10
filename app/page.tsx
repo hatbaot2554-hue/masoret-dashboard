@@ -178,6 +178,20 @@ function parseAdminNotes(notes: Order['admin_notes']): AdminNote[] {
   }
 }
 
+function orderNotesText(order: Order): string {
+  return String(order.notes || '');
+}
+
+function isAiSafeOrder(order: Order): boolean {
+  const source = String(order.source || '').toLowerCase();
+  const notes = orderNotesText(order);
+  return source === 'ai_chat_safe' || notes.includes('AI_CHAT_SAFE_ORDER');
+}
+
+function isAiDraftOrder(order: Order): boolean {
+  return isAiSafeOrder(order) && !order.auto_submitted && !order.external_order_id && (order.status || 'pending') !== 'cancelled';
+}
+
 function customerNote(notes: string | undefined) {
   const raw = String(notes || '').trim();
   if (!raw) return '';
@@ -565,6 +579,41 @@ export default function Dashboard() {
     setSaving(false);
   }
 
+  async function patchOrder(id: string, patch: Partial<Order>) {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
+        body: JSON.stringify({ id, ...patch }),
+      });
+      const updated = await res.json();
+      if (res.ok) {
+        setOrders((prev) => prev.map((order) => (order.id === id ? updated : order)));
+        setSelected((prev) => (prev?.id === id ? updated : prev));
+        return updated as Order;
+      }
+    } finally {
+      setSaving(false);
+    }
+    return null;
+  }
+
+  async function decideAiDraftOrder(order: Order, decision: 'approve' | 'cancel') {
+    const note: AdminNote = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      author: currentUser?.fullName || currentUser?.username || 'מנהל',
+      text: decision === 'approve'
+        ? 'הזמנת AI זמנית אושרה לטיפול ידני. עדיין לא נשלחה לאתר המקורי.'
+        : 'הזמנת AI זמנית בוטלה על ידי מנהל.',
+      createdAt: new Date().toISOString(),
+    };
+    await patchOrder(order.id, {
+      status: decision === 'approve' ? 'needs_care' : 'cancelled',
+      admin_notes: [note, ...parseAdminNotes(order.admin_notes)],
+    });
+  }
+
   async function saveAdminNotes(id: string, notes: AdminNote[]) {
     setSaving(true);
     const res = await fetch('/api/orders', {
@@ -825,7 +874,7 @@ export default function Dashboard() {
             <section className="wp-panel admin-placeholder">
               <h3>הגדרות מערכת</h3>
               <p>מצב הזמנות אמת אצל הספק כבוי כל עוד לא מוגדר GitHub Secret בשם AUTO_ORDER_SUBMIT=true.</p>
-              <p>הדאשבורד מחובר למסד הנתונים ומציג נתונים חיים מההזמנות.</p>
+              <p>הדאשבורד מחובר למסד הנתונים ומ��יג נתונים חיים מההזמנות.</p>
             </section>
           )}
 
@@ -843,9 +892,46 @@ export default function Dashboard() {
                     <div className="metric-grid">
                       <div><span>בדיקות</span><strong>{systemHealth.checks.length}</strong></div>
                       <div><span>פעיל</span><strong>{systemHealth.checks.filter((check) => check.status === 'ok').length}</strong></div>
-                      <div><span>דורש טיפול</span><strong>{systemHealth.checks.filter((check) => ['missing', 'warning', 'error'].includes(check.status)).length}</strong></div>
-                      <div><span>לא נבדק מכאן</span><strong>{systemHealth.checks.filter((check) => check.status === 'unknown').length}</strong></div>
+                      <div><span>הזמנות AI זמניות</span><strong>{aiDraftOrders.length}</strong></div>
+                      <div><span>כל הזמנות AI</span><strong>{aiSafeOrders.length}</strong></div>
                     </div>
+
+                    <section className="management-subsection">
+                      <h4>הזמנות AI זמניות</h4>
+                      {aiDraftOrders.length === 0 ? (
+                        <p>אין כרגע הזמנות AI שממתינות לאישור מנהל.</p>
+                      ) : (
+                        <table className="simple-admin-table">
+                          <thead>
+                            <tr>
+                              <th>הזמנה</th>
+                              <th>לקוח</th>
+                              <th>סה&quot;כ</th>
+                              <th>נוצרה</th>
+                              <th>פעולה</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {aiDraftOrders.map((order) => (
+                              <tr key={order.id}>
+                                <td>
+                                  <button className="order-link" type="button" onClick={() => setSelected(order)}>
+                                    #{formatOrderId(order.id)}
+                                  </button>
+                                </td>
+                                <td>{order.customer_name || 'לקוח'}<small>{order.customer_phone || order.customer_email}</small></td>
+                                <td>{formatMoney(order.total_price)}</td>
+                                <td>{dateHe(order.created_at)} {timeHe(order.created_at)}</td>
+                                <td className="row-actions">
+                                  <button type="button" onClick={() => decideAiDraftOrder(order, 'approve')} disabled={saving}>אשר לטיפול</button>
+                                  <button type="button" onClick={() => decideAiDraftOrder(order, 'cancel')} disabled={saving}>בטל</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </section>
 
                     <table className="simple-admin-table">
                       <thead>
@@ -1133,6 +1219,21 @@ export default function Dashboard() {
                 <p>רווח: {formatMoney(selected.profit)}</p>
               </section>
 
+              {isAiSafeOrder(selected) && (
+                <section className="wp-panel ai-safe-panel">
+                  <h3>הזמנת AI זמנית</h3>
+                  <p>ההזמנה נוצרה דרך הצ׳אט. היא לא נשלחה לאתר המקורי ולא בוצע חיוב.</p>
+                  {isAiDraftOrder(selected) ? (
+                    <div className="row-actions">
+                      <button type="button" onClick={() => decideAiDraftOrder(selected, 'approve')} disabled={saving}>אשר לטיפול</button>
+                      <button type="button" onClick={() => decideAiDraftOrder(selected, 'cancel')} disabled={saving}>בטל</button>
+                    </div>
+                  ) : (
+                    <span className={statusChipClass(selected.status)}>{STATUS_LABELS[selected.status] || selected.status || 'ממתין לטיפול'}</span>
+                  )}
+                </section>
+              )}
+
               <section className="wp-panel">
                 <h3>דאטה לוג׳יקס</h3>
                 <div className="datalogics-card">
@@ -1283,6 +1384,7 @@ export default function Dashboard() {
                       <button className="order-link" type="button" onClick={() => setSelected(order)}>
                         #{formatOrderId(order.id)} {order.customer_name || 'לקוח'}
                       </button>
+                      {isAiSafeOrder(order) && <span className="ai-order-badge">הזמנת AI זמנית</span>}
                       <small>{items.slice(0, 2).map((item) => item.name).join(', ')}</small>
                     </td>
                     <td>
