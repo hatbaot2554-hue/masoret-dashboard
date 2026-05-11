@@ -466,6 +466,8 @@ export default function Dashboard() {
   const [systemHealth, setSystemHealth] = useState<HealthResponse | null>(null);
   const [systemHealthError, setSystemHealthError] = useState('');
   const [systemHealthLoading, setSystemHealthLoading] = useState(false);
+  const [statusSyncLoading, setStatusSyncLoading] = useState(false);
+  const [statusSyncMessage, setStatusSyncMessage] = useState('');
 
   useEffect(() => {
     const token = sessionStorage.getItem('dashboard_token');
@@ -567,6 +569,27 @@ export default function Dashboard() {
       document.removeEventListener('click', handleProductLinkClick, true);
     };
   }, [authed, selected, orders]);
+
+  async function syncStatusesNow() {
+    setStatusSyncLoading(true);
+    setStatusSyncMessage('');
+    try {
+      const res = await fetch('/api/status-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'סנכרון הסטטוסים נכשל.');
+      const count = Array.isArray(data?.updated) ? data.updated.length : 0;
+      setStatusSyncMessage(count > 0 ? `סונכרנו ${count} הזמנות.` : 'אין כרגע הזמנות שממתינות לסנכרון.');
+      await fetchOrders();
+    } catch (error) {
+      setStatusSyncMessage(error instanceof Error ? error.message : 'סנכרון הסטטוסים נכשל.');
+    } finally {
+      setStatusSyncLoading(false);
+    }
+  }
 
   async function updateStatus(id: string, status: string) {
     setSaving(true);
@@ -899,6 +922,13 @@ export default function Dashboard() {
               <section className="wp-panel admin-table-panel">
                 <h3>ניהול מערכת</h3>
                 <p>כאן מרוכזות בדיקות החיבורים והמפתחות של לוח הבקרה ואתר הלקוחות. הערכים עצמם לא מוצגים.</p>
+
+                <div className="management-actions">
+                  <button type="button" onClick={syncStatusesNow} disabled={statusSyncLoading}>
+                    {statusSyncLoading ? 'מסנכרן סטטוסים...' : 'סנכרן סטטוסים עכשיו'}
+                  </button>
+                  {statusSyncMessage && <span>{statusSyncMessage}</span>}
+                </div>
 
                 {systemHealthLoading && <p>טוען בדיקות מערכת...</p>}
                 {systemHealthError && <div className="login-error">{systemHealthError}</div>}
