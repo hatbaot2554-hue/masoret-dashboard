@@ -34,12 +34,27 @@ function publicOrderId(id: unknown): string {
 }
 
 const statusLabels: Record<string, string> = {
-  pending: 'ממתין לטיפול',
-  confirmed: 'אושר',
-  shipped: 'נשלח',
-  delivered: 'נמסר',
-  cancelled: 'בוטל'
+  pending: 'ההזמנה התקבלה',
+  needs_care: 'ההזמנה בבדיקה',
+  ai_ready_for_source_submit: 'ההזמנה בעיבוד',
+  source_submit_in_progress: 'ההזמנה בעיבוד',
+  source_submitted: 'ההזמנה בטיפול',
+  source_waiting_payment: 'ממתינים להשלמת תשלום',
+  warehouse_processing: 'מכינים את ההזמנה',
+  warehouse_backorder: 'ממתינים לזמינות המוצר',
+  supplier_to_customer_warehouse: 'ההזמנה בהכנה למשלוח',
+  confirmed: 'ההזמנה אושרה ונמצאת בטיפול',
+  shipped: 'ההזמנה נשלחה',
+  delivered: 'ההזמנה נמסרה',
+  cancelled: 'ההזמנה בוטלה',
+  source_sync_error: 'ההזמנה בבדיקה',
+  not_paid: 'ממתינים להשלמת תשלום'
 };
+
+function customerStatusLabel(status: unknown): string {
+  const key = String(status || 'pending');
+  return statusLabels[key] || 'ההזמנה בטיפול';
+}
 
 export async function GET(request: Request) {
   try {
@@ -63,7 +78,7 @@ export async function GET(request: Request) {
           ...order,
           our_order_id: publicOrderId(order.id),
           date: new Date(order.created_at).toLocaleDateString('he-IL'),
-          status_he: statusLabels[order.status] || order.status || 'בטיפול'
+          status_he: customerStatusLabel(order.status)
         }
       })
     }
