@@ -34,27 +34,30 @@ function publicOrderId(id: unknown): string {
 }
 
 const statusLabels: Record<string, string> = {
-  pending: 'ההזמנה התקבלה',
-  needs_care: 'ההזמנה בבדיקה',
-  ai_ready_for_source_submit: 'ההזמנה בעיבוד',
-  source_submit_in_progress: 'ההזמנה בעיבוד',
-  source_submit_simulated: 'ההזמנה בעיבוד',
-  source_submitted: 'ההזמנה בטיפול',
-  source_waiting_payment: 'ממתינים להשלמת תשלום',
-  warehouse_processing: 'מכינים את ההזמנה',
-  warehouse_backorder: 'ממתינים לזמינות המוצר',
-  supplier_to_customer_warehouse: 'ההזמנה בהכנה למשלוח',
-  confirmed: 'ההזמנה אושרה ונמצאת בטיפול',
-  shipped: 'ההזמנה נשלחה',
-  delivered: 'ההזמנה נמסרה',
-  cancelled: 'ההזמנה בוטלה',
-  source_sync_error: 'ההזמנה בבדיקה',
-  not_paid: 'ממתינים להשלמת תשלום'
+  pending: 'הזמנה בתהליך',
+  needs_care: 'הזמנה בתהליך',
+  ai_draft: 'הזמנה בתהליך',
+  ai_ready_for_source_submit: 'הזמנה בעיבוד',
+  source_submit_in_progress: 'הזמנה בעיבוד',
+  source_submit_simulated: 'הזמנה בעיבוד',
+  warehouse_processing: 'הזמנה בעיבוד',
+  warehouse_backorder: 'הזמנה בעיבוד',
+  supplier_to_customer_warehouse: 'הזמנה בעיבוד',
+  confirmed: 'הזמנה בעיבוד',
+  shipped: 'נשלח',
+  delivered: 'נמסר',
+  cancelled: 'בוטל'
 };
 
-function customerStatusLabel(status: unknown): string {
-  const key = String(status || 'pending');
-  return statusLabels[key] || 'ההזמנה בטיפול';
+function publicOrder(row: Record<string, unknown>) {
+  const status = String(row.status || 'pending');
+  return {
+    ...row,
+    our_order_id: publicOrderId(row.id),
+    date: new Date(String(row.created_at)).toLocaleDateString('he-IL'),
+    status_he: statusLabels[status] || 'הזמנה בתהליך',
+    customer_status: statusLabels[status] || 'הזמנה בתהליך',
+  };
 }
 
 export async function GET(request: Request) {
@@ -64,6 +67,7 @@ export async function GET(request: Request) {
     const autoSubmitted = searchParams.get('auto_submitted')
     const orderNumber = searchParams.get('order')?.trim()
     const email = searchParams.get('email')?.trim().toLowerCase()
+    const account = searchParams.get('account')?.trim()
 
     if (orderNumber && email) {
       const result = await pool.query(
@@ -75,13 +79,24 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'הזמנה לא נמצאה' }, { status: 404 })
       }
       return NextResponse.json({
-        order: {
-          ...order,
-          our_order_id: publicOrderId(order.id),
-          date: new Date(order.created_at).toLocaleDateString('he-IL'),
-          status_he: customerStatusLabel(order.status)
-        }
+        order: publicOrder(order)
       })
+    }
+
+    if (account) {
+      const isEmail = account.includes('@')
+      const normalizedPhone = account.replace(/\D/g, '')
+      const result = isEmail
+        ? await pool.query(
+            `SELECT * FROM orders WHERE LOWER(customer_email) = LOWER($1) ORDER BY created_at DESC LIMIT 100`,
+            [account]
+          )
+        : await pool.query(
+            `SELECT * FROM orders WHERE regexp_replace(COALESCE(customer_phone, ''), '\\D', '', 'g') = $1 ORDER BY created_at DESC LIMIT 100`,
+            [normalizedPhone]
+          )
+
+      return NextResponse.json({ orders: result.rows.map(publicOrder) })
     }
 
     if (!isDashboardRequest(request)) {
@@ -226,7 +241,7 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json(result.rows[0])
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'שגיאה'
+    const msg = e instanceof Error ? e.message : 'שג��אה'
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
