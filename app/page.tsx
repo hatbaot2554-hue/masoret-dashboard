@@ -94,6 +94,16 @@ type HealthResponse = {
   checks: HealthCheck[];
 };
 
+type ContactRequest = {
+  id: number;
+  name: string;
+  phone: string;
+  email?: string;
+  message: string;
+  status: string;
+  created_at: string;
+};
+
 type AdminView = 'dashboard' | 'orders' | 'products' | 'customers' | 'coupons' | 'reports' | 'graphs' | 'settings' | 'management';
 
 const PRODUCT_SITE_URL = 'https://masoret-website.vercel.app';
@@ -107,8 +117,6 @@ const STATUSES = [
   { key: 'delivered', label: 'הושלם', chip: 'green' },
   { key: 'cancelled', label: 'בוטל', chip: 'light' },
   { key: 'needs_care', label: 'ממתין לטיפול', chip: 'red' },
-  { key: 'ai_ready_for_source_submit', label: 'מאושר לשליחה לאתר המקורי', chip: 'blue' },
-  { key: 'source_submit_simulated', label: 'סימולציית שליחה בוצעה', chip: 'lime' },
   { key: 'warehouse_backorder', label: 'בהזמנה מהספק', chip: 'orange' },
   { key: 'not_paid', label: 'לא שולם', chip: 'slate' },
 ];
@@ -467,8 +475,8 @@ export default function Dashboard() {
   const [systemHealth, setSystemHealth] = useState<HealthResponse | null>(null);
   const [systemHealthError, setSystemHealthError] = useState('');
   const [systemHealthLoading, setSystemHealthLoading] = useState(false);
-  const [statusSyncLoading, setStatusSyncLoading] = useState(false);
-  const [statusSyncMessage, setStatusSyncMessage] = useState('');
+  const [contactRequests, setContactRequests] = useState<ContactRequest[]>([]);
+  const [contactError, setContactError] = useState('');
 
   useEffect(() => {
     const token = sessionStorage.getItem('dashboard_token');
@@ -523,6 +531,15 @@ export default function Dashboard() {
       })
       .catch((error) => setSystemHealthError(error.message || 'לא ניתן לטעון את בדיקות המערכת.'))
       .finally(() => setSystemHealthLoading(false));
+
+    setContactError('');
+    fetch('/api/contact', { headers: dashboardAuthHeaders() })
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || 'לא ניתן לטעון פניות צור קשר.');
+        setContactRequests(Array.isArray(data?.requests) ? data.requests : []);
+      })
+      .catch((error) => setContactError(error.message || 'לא ניתן לטעון פניות צור קשר.'));
   }, [activeView, authed, canManageSystem]);
 
   useEffect(() => {
@@ -571,27 +588,6 @@ export default function Dashboard() {
     };
   }, [authed, selected, orders]);
 
-  async function syncStatusesNow() {
-    setStatusSyncLoading(true);
-    setStatusSyncMessage('');
-    try {
-      const res = await fetch('/api/status-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || 'סנכרון הסטטוסים נכשל.');
-      const count = Array.isArray(data?.updated) ? data.updated.length : 0;
-      setStatusSyncMessage(count > 0 ? `סונכרנו ${count} הזמנות.` : 'אין כרגע הזמנות שממתינות לסנכרון.');
-      await fetchOrders();
-    } catch (error) {
-      setStatusSyncMessage(error instanceof Error ? error.message : 'סנכרון הסטטוסים נכשל.');
-    } finally {
-      setStatusSyncLoading(false);
-    }
-  }
-
   async function updateStatus(id: string, status: string) {
     setSaving(true);
     await fetch('/api/orders', {
@@ -624,29 +620,17 @@ export default function Dashboard() {
     return null;
   }
 
-  async function decideAiDraftOrder(order: Order, decision: 'approve' | 'submit' | 'cancel') {
-    const decisionMeta = {
-      approve: {
-        status: 'needs_care',
-        text: 'הזמנת AI זמנית אושרה לטיפול ידני. עדיין לא נשלחה לאתר המקורי.',
-      },
-      submit: {
-        status: 'ai_ready_for_source_submit',
-        text: 'הזמנת AI זמנית אושרה לשליחה לאתר המקורי. השליחה בפועל עדיין ממתינה לחיבור הרובוט.',
-      },
-      cancel: {
-        status: 'cancelled',
-        text: 'הזמנת AI זמנית בוטלה על ידי מנהל.',
-      },
-    }[decision];
+  async function decideAiDraftOrder(order: Order, decision: 'approve' | 'cancel') {
     const note: AdminNote = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       author: currentUser?.fullName || currentUser?.username || 'מנהל',
-      text: decisionMeta.text,
+      text: decision === 'approve'
+        ? 'הזמנת AI זמנית אושרה לטיפול ידני. עדיין לא נשלחה לאתר המקורי.'
+        : 'הזמנת AI זמנית בוטלה על ידי מנהל.',
       createdAt: new Date().toISOString(),
     };
     await patchOrder(order.id, {
-      status: decisionMeta.status,
+      status: decision === 'approve' ? 'needs_care' : 'cancelled',
       admin_notes: [note, ...parseAdminNotes(order.admin_notes)],
     });
   }
@@ -754,9 +738,6 @@ export default function Dashboard() {
     for (const order of orders) counts[order.status || 'pending'] = (counts[order.status || 'pending'] || 0) + 1;
     return counts;
   }, [orders]);
-
-  const aiDraftOrders = useMemo(() => orders.filter(isAiDraftOrder), [orders]);
-  const aiSafeOrders = useMemo(() => orders.filter(isAiSafeOrder), [orders]);
 
   const dashboardStats = useMemo(() => {
     const revenue = orders.reduce((sum, order) => sum + Number(order.total_price || 0), 0);
@@ -924,13 +905,6 @@ export default function Dashboard() {
                 <h3>ניהול מערכת</h3>
                 <p>כאן מרוכזות בדיקות החיבורים והמפתחות של לוח הבקרה ואתר הלקוחות. הערכים עצמם לא מוצגים.</p>
 
-                <div className="management-actions">
-                  <button type="button" onClick={syncStatusesNow} disabled={statusSyncLoading}>
-                    {statusSyncLoading ? 'מסנכרן סטטוסים...' : 'סנכרן סטטוסים עכשיו'}
-                  </button>
-                  {statusSyncMessage && <span>{statusSyncMessage}</span>}
-                </div>
-
                 {systemHealthLoading && <p>טוען בדיקות מערכת...</p>}
                 {systemHealthError && <div className="login-error">{systemHealthError}</div>}
 
@@ -971,9 +945,39 @@ export default function Dashboard() {
                                 <td>{dateHe(order.created_at)} {timeHe(order.created_at)}</td>
                                 <td className="row-actions">
                                   <button type="button" onClick={() => decideAiDraftOrder(order, 'approve')} disabled={saving}>אשר לטיפול</button>
-                                  <button type="button" onClick={() => decideAiDraftOrder(order, 'submit')} disabled={saving}>אשר שליחה</button>
                                   <button type="button" onClick={() => decideAiDraftOrder(order, 'cancel')} disabled={saving}>בטל</button>
                                 </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </section>
+
+                    <section className="management-subsection">
+                      <h4>פניות צור קשר</h4>
+                      {contactError && <div className="login-error">{contactError}</div>}
+                      {contactRequests.length === 0 ? (
+                        <p>אין כרגע פניות צור קשר להצגה.</p>
+                      ) : (
+                        <table className="simple-admin-table">
+                          <thead>
+                            <tr>
+                              <th>תאריך</th>
+                              <th>שם</th>
+                              <th>טלפון</th>
+                              <th>מייל</th>
+                              <th>הודעה</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {contactRequests.map((request) => (
+                              <tr key={request.id}>
+                                <td>{dateHe(request.created_at)} {timeHe(request.created_at)}</td>
+                                <td>{request.name}</td>
+                                <td>{request.phone}</td>
+                                <td>{request.email || '-'}</td>
+                                <td>{request.message}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1274,7 +1278,6 @@ export default function Dashboard() {
                   {isAiDraftOrder(selected) ? (
                     <div className="row-actions">
                       <button type="button" onClick={() => decideAiDraftOrder(selected, 'approve')} disabled={saving}>אשר לטיפול</button>
-                      <button type="button" onClick={() => decideAiDraftOrder(selected, 'submit')} disabled={saving}>אשר שליחה</button>
                       <button type="button" onClick={() => decideAiDraftOrder(selected, 'cancel')} disabled={saving}>בטל</button>
                     </div>
                   ) : (
