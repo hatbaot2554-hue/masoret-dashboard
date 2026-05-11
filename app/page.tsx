@@ -757,6 +757,9 @@ export default function Dashboard() {
     };
   }, [orders]);
 
+  const aiSafeOrders = useMemo(() => orders.filter(isAiSafeOrder), [orders]);
+  const aiDraftOrders = useMemo(() => orders.filter(isAiDraftOrder), [orders]);
+
   const topProducts = useMemo(() => {
     const totals = new Map<string, { qty: number; revenue: number }>();
     for (const order of orders) {
