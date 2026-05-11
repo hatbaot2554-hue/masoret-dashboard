@@ -91,7 +91,8 @@ function validateOrder(row: OrderRow, items: OrderItem[]) {
   if (!String(row.customer_email || '').trim()) missing.push('מייל');
   if (!String(row.customer_address || '').trim()) missing.push('כתובת');
   if (!items.length) missing.push('פריטי הזמנה');
-  for (const [index, item] of items.entries()) {
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
     if (!String(item.sku || item.sourceProductId || item.productId || item.sourceProductIndex || '').trim()) {
       missing.push(`מזהה מוצר בפריט ${index + 1}`);
     }
