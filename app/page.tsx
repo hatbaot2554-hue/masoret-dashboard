@@ -108,6 +108,7 @@ const STATUSES = [
   { key: 'cancelled', label: 'בוטל', chip: 'light' },
   { key: 'needs_care', label: 'ממתין לטיפול', chip: 'red' },
   { key: 'ai_ready_for_source_submit', label: 'מאושר לשליחה לאתר המקורי', chip: 'blue' },
+  { key: 'source_submit_simulated', label: 'סימולציית שליחה בוצעה', chip: 'lime' },
   { key: 'warehouse_backorder', label: 'בהזמנה מהספק', chip: 'orange' },
   { key: 'not_paid', label: 'לא שולם', chip: 'slate' },
 ];
