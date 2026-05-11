@@ -38,6 +38,7 @@ const statusLabels: Record<string, string> = {
   needs_care: 'ההזמנה בבדיקה',
   ai_ready_for_source_submit: 'ההזמנה בעיבוד',
   source_submit_in_progress: 'ההזמנה בעיבוד',
+  source_submit_simulated: 'ההזמנה בעיבוד',
   source_submitted: 'ההזמנה בטיפול',
   source_waiting_payment: 'ממתינים להשלמת תשלום',
   warehouse_processing: 'מכינים את ההזמנה',
