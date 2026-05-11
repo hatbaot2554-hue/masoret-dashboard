@@ -110,6 +110,9 @@ const PRODUCT_SITE_URL = 'https://masoret-website.vercel.app';
 
 const STATUSES = [
   { key: 'pending', label: 'ממתין לטיפול', chip: 'red' },
+  { key: 'ai_ready_for_source_submit', label: 'מאושר לשליחה', chip: 'yellow' },
+  { key: 'source_submit_in_progress', label: 'שליחה בתהליך', chip: 'blue' },
+  { key: 'source_submit_simulated', label: 'נבדק בסימולציה', chip: 'purple' },
   { key: 'warehouse_processing', label: 'בהטמעה במחסן', chip: 'yellow' },
   { key: 'supplier_to_customer_warehouse', label: 'ספק ללקוח במחסן', chip: 'lime' },
   { key: 'confirmed', label: 'הוזמן מעוז והדרך ללקוח', chip: 'purple' },
@@ -625,12 +628,12 @@ export default function Dashboard() {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       author: currentUser?.fullName || currentUser?.username || 'מנהל',
       text: decision === 'approve'
-        ? 'הזמנת AI זמנית אושרה לטיפול ידני. עדיין לא נשלחה לאתר המקורי.'
-        : 'הזמנת AI זמנית בוטלה על ידי מנהל.',
+        ? 'הזמנת AI אושרה וממתינה לאוטומציית שליחה.'
+        : 'הזמנת AI בוטלה על ידי מנהל.',
       createdAt: new Date().toISOString(),
     };
     await patchOrder(order.id, {
-      status: decision === 'approve' ? 'needs_care' : 'cancelled',
+      status: decision === 'approve' ? 'ai_ready_for_source_submit' : 'cancelled',
       admin_notes: [note, ...parseAdminNotes(order.admin_notes)],
     });
   }
@@ -1470,3 +1473,4 @@ export default function Dashboard() {
     </main>
   );
 }
+
