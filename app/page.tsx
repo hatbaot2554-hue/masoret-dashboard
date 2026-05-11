@@ -107,6 +107,7 @@ const STATUSES = [
   { key: 'delivered', label: 'הושלם', chip: 'green' },
   { key: 'cancelled', label: 'בוטל', chip: 'light' },
   { key: 'needs_care', label: 'ממתין לטיפול', chip: 'red' },
+  { key: 'ai_ready_for_source_submit', label: 'מאושר לשליחה לאתר המקורי', chip: 'blue' },
   { key: 'warehouse_backorder', label: 'בהזמנה מהספק', chip: 'orange' },
   { key: 'not_paid', label: 'לא שולם', chip: 'slate' },
 ];
@@ -599,17 +600,29 @@ export default function Dashboard() {
     return null;
   }
 
-  async function decideAiDraftOrder(order: Order, decision: 'approve' | 'cancel') {
+  async function decideAiDraftOrder(order: Order, decision: 'approve' | 'submit' | 'cancel') {
+    const decisionMeta = {
+      approve: {
+        status: 'needs_care',
+        text: 'הזמנת AI זמנית אושרה לטיפול ידני. עדיין לא נשלחה לאתר המקורי.',
+      },
+      submit: {
+        status: 'ai_ready_for_source_submit',
+        text: 'הזמנת AI זמנית אושרה לשליחה לאתר המקורי. השליחה בפועל עדיין ממתינה לחיבור הרובוט.',
+      },
+      cancel: {
+        status: 'cancelled',
+        text: 'הזמנת AI זמנית בוטלה על ידי מנהל.',
+      },
+    }[decision];
     const note: AdminNote = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       author: currentUser?.fullName || currentUser?.username || 'מנהל',
-      text: decision === 'approve'
-        ? 'הזמנת AI זמנית אושרה לטיפול ידני. עדיין לא נשלחה לאתר המקורי.'
-        : 'הזמנת AI זמנית בוטלה על ידי מנהל.',
+      text: decisionMeta.text,
       createdAt: new Date().toISOString(),
     };
     await patchOrder(order.id, {
-      status: decision === 'approve' ? 'needs_care' : 'cancelled',
+      status: decisionMeta.status,
       admin_notes: [note, ...parseAdminNotes(order.admin_notes)],
     });
   }
@@ -927,6 +940,7 @@ export default function Dashboard() {
                                 <td>{dateHe(order.created_at)} {timeHe(order.created_at)}</td>
                                 <td className="row-actions">
                                   <button type="button" onClick={() => decideAiDraftOrder(order, 'approve')} disabled={saving}>אשר לטיפול</button>
+                                  <button type="button" onClick={() => decideAiDraftOrder(order, 'submit')} disabled={saving}>אשר שליחה</button>
                                   <button type="button" onClick={() => decideAiDraftOrder(order, 'cancel')} disabled={saving}>בטל</button>
                                 </td>
                               </tr>
@@ -1229,6 +1243,7 @@ export default function Dashboard() {
                   {isAiDraftOrder(selected) ? (
                     <div className="row-actions">
                       <button type="button" onClick={() => decideAiDraftOrder(selected, 'approve')} disabled={saving}>אשר לטיפול</button>
+                      <button type="button" onClick={() => decideAiDraftOrder(selected, 'submit')} disabled={saving}>אשר שליחה</button>
                       <button type="button" onClick={() => decideAiDraftOrder(selected, 'cancel')} disabled={saving}>בטל</button>
                     </div>
                   ) : (
