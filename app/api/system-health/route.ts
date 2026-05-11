@@ -131,7 +131,7 @@ async function resendCheck(): Promise<HealthCheck> {
         label: "שליחת מיילים",
         scope: "לוח בקרה",
         status: "ok",
-        detail: "מפתח Resend מוגדר. למפתח יש כנראה הרשאת שליחה בלבד, ולכן בדיקת הדומיינים לא זמינה. שליחת מיילים תיבדק בפועל במסך איפוס סיסמה או שליחת הודעה.",
+        detail: "מפתח Resend מוגדר. למפתח יש כנראה הרשאת שליחה בלבד, ולכן בדיקת הדומיינים לא זמינה. שליחת מיילים ת��בדק בפועל במסך איפוס סיסמה או שליחת הודעה.",
       };
     }
 
@@ -221,6 +221,12 @@ export async function GET(request: Request) {
       "לוח בקרה",
       "לא מוגדר סוד ייעודי לחתימת התחברות. כרגע המערכת תשתמש בערך גיבוי, ומומלץ להגדיר סוד קבוע."
     ),
+    localSecretCheck(
+      "AUTOMATION_API_SECRET",
+      "סוד גישה לאוטומציית הזמנות",
+      "אוטומציית הזמנות",
+      "לא מוגדר סוד ייעודי לאוטומציה. כרגע ניתן להשתמש בסוד לוח הבקרה, אבל מומלץ להגדיר סוד נפרד לפני שליחה בפועל."
+    ),
     ...websiteChecks,
     ...(!websiteKeys.has("OPENAI_API_KEY") ? [externalSecretCheck("OPENAI_API_KEY", "OpenAI לשירות AI", "אתר הלקוחות")] : []),
     ...(!websiteKeys.has("GEMINI_API_KEY") ? [externalSecretCheck("GEMINI_API_KEY", "Gemini לשירות AI", "אתר הלקוחות")] : []),
@@ -236,3 +242,4 @@ export async function GET(request: Request) {
     checks,
   });
 }
+
