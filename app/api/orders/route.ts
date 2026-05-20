@@ -1,33 +1,11 @@
 import { Pool } from 'pg';
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
+import { clientIp, genericServerError, isDashboardRequest, rateLimit, sharedSecretAllowed } from '../../lib/security';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
-
-function getAuthSecret(): string {
-  return process.env.DASHBOARD_AUTH_SECRET || process.env.DATABASE_URL || 'change-this-secret';
-}
-
-function sign(value: string): string {
-  return crypto.createHmac('sha256', getAuthSecret()).update(value).digest('base64url');
-}
-
-function isDashboardRequest(request: Request): boolean {
-  const header = request.headers.get('authorization') || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-  const [payload, signature] = token.split('.');
-  if (!payload || !signature || sign(payload) !== signature) return false;
-
-  try {
-    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { exp?: number };
-    return typeof data.exp === 'number' && data.exp > Date.now();
-  } catch {
-    return false;
-  }
-}
 
 function publicOrderId(id: unknown): string {
   return String(id || '').replace(/\D/g, '').slice(-5).padStart(5, '0');
@@ -84,6 +62,9 @@ export async function GET(request: Request) {
     }
 
     if (account) {
+      if (!rateLimit(`account-orders:${clientIp(request)}:${account.toLowerCase()}`, 20, 10 * 60 * 1000)) {
+        return NextResponse.json({ error: 'יותר מדי בקשות. נסה שוב בעוד כמה דקות.' }, { status: 429 })
+      }
       const isEmail = account.includes('@')
       const normalizedPhone = account.replace(/\D/g, '')
       const result = isEmail
@@ -125,13 +106,18 @@ export async function GET(request: Request) {
     const result = await pool.query(query, params)
     return NextResponse.json(result.rows)
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'שגיאה'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return genericServerError(e)
   }
 }
 
 export async function POST(request: Request) {
   try {
+    if (!sharedSecretAllowed(request, 'DASHBOARD_ORDERS_API_SECRET', 'x-dashboard-orders-secret')) {
+      return NextResponse.json({ error: 'לא מורשה' }, { status: 401 })
+    }
+    if (!rateLimit(`create-order:${clientIp(request)}`, 40, 10 * 60 * 1000)) {
+      return NextResponse.json({ error: 'יותר מדי בקשות. נסה שוב בעוד כמה דקות.' }, { status: 429 })
+    }
     const body = await request.json() as {
       customer_name: string
       customer_phone: string
@@ -177,8 +163,7 @@ export async function POST(request: Request) {
     )
     return NextResponse.json(result.rows[0])
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'שגיאה'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return genericServerError(e)
   }
 }
 
@@ -241,7 +226,6 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json(result.rows[0])
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'שג��אה'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return genericServerError(e)
   }
 }
