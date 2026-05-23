@@ -20,7 +20,7 @@ const pool = new Pool({
 });
 
 function getAuthSecret(): string {
-  return process.env.DASHBOARD_AUTH_SECRET || process.env.DATABASE_URL || "change-this-secret";
+  return process.env.DASHBOARD_AUTH_SECRET?.trim() || "";
 }
 
 function sign(value: string): string {
@@ -44,6 +44,7 @@ function canViewSystemHealth(payload: { username?: string; role?: string; exp?: 
 }
 
 function isDashboardRequest(request: Request): boolean {
+  if (!getAuthSecret()) return false;
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) return false;
 

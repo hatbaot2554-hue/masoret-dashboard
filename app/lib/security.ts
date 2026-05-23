@@ -67,6 +67,6 @@ export function rateLimit(key: string, limit = 12, windowMs = 60_000): boolean {
 
 export function sharedSecretAllowed(request: Request, envName: string, headerName: string): boolean {
   const secret = process.env[envName]?.trim();
-  if (!secret) return true;
+  if (!secret) return process.env.NODE_ENV !== 'production';
   return safeEqual(request.headers.get(headerName) || '', secret);
 }

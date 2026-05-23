@@ -9,7 +9,7 @@ const pool = new Pool({
 });
 
 function getAuthSecret(): string {
-  return process.env.DASHBOARD_AUTH_SECRET || process.env.DATABASE_URL || 'change-this-secret';
+  return process.env.DASHBOARD_AUTH_SECRET?.trim() || '';
 }
 
 function sign(value: string): string {
@@ -17,6 +17,7 @@ function sign(value: string): string {
 }
 
 function isDashboardRequest(request: Request): boolean {
+  if (!getAuthSecret()) return false;
   const header = request.headers.get('authorization') || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
   const [payload, signature] = token.split('.');
