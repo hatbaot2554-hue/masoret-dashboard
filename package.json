@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:local": "\"%npm_node_execpath%\" node_modules/next/dist/bin/next build",
     "start": "next start",
     "lint": "next lint"
   },
