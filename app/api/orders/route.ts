@@ -150,6 +150,14 @@ export async function GET(request: Request) {
     const result = await pool.query(query, params)
     return NextResponse.json(result.rows)
   } catch (e: unknown) {
+    if (sharedSecretAllowed(request, 'DASHBOARD_ORDERS_API_SECRET', 'x-dashboard-orders-secret')) {
+      const error = e as { code?: string; name?: string; message?: string }
+      return NextResponse.json({
+        error: 'שגיאת שרת. נסה שוב מאוחר יותר.',
+        internal_code: error.code || error.name || 'UNKNOWN',
+        internal_message: error.message || 'Unknown order lookup error',
+      }, { status: 500 })
+    }
     return genericServerError(e)
   }
 }
