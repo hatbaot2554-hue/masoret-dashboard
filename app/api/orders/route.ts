@@ -84,7 +84,6 @@ async function ensureOrdersTable() {
 
 export async function GET(request: Request) {
   try {
-    await ensureOrdersTable()
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const autoSubmitted = searchParams.get('auto_submitted')
@@ -184,7 +183,9 @@ export async function POST(request: Request) {
       notes, source, utm_source
     } = body
 
-    await ensureOrdersTable()
+    await ensureOrdersTable().catch((error) => {
+      console.error('Could not ensure orders table before insert', error)
+    })
 
     const result = await pool.query(
       `INSERT INTO orders (
