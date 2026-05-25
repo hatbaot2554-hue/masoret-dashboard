@@ -1,11 +1,8 @@
-import { Pool } from 'pg';
 import { NextResponse } from 'next/server';
+import { createDbPool } from '../../lib/db';
 import { clientIp, genericServerError, isDashboardRequest, rateLimit, sharedSecretAllowed } from '../../lib/security';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+const pool = createDbPool();
 
 function publicOrderId(id: unknown): string {
   return String(id || '').replace(/\D/g, '').slice(-5).padStart(5, '0');
@@ -38,8 +35,56 @@ function publicOrder(row: Record<string, unknown>) {
   };
 }
 
+async function ensureOrdersTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id SERIAL PRIMARY KEY,
+      customer_name TEXT,
+      customer_phone TEXT,
+      customer_email TEXT,
+      customer_address TEXT,
+      items JSONB DEFAULT '[]'::jsonb,
+      total_price NUMERIC DEFAULT 0,
+      cost_price NUMERIC DEFAULT 0,
+      profit NUMERIC DEFAULT 0,
+      payment_method TEXT DEFAULT 'pending',
+      notes TEXT,
+      source TEXT DEFAULT 'direct',
+      utm_source TEXT,
+      auto_submitted BOOLEAN DEFAULT FALSE,
+      checkout_url TEXT,
+      external_order_id TEXT,
+      status TEXT DEFAULT 'pending',
+      admin_notes JSONB DEFAULT '[]'::jsonb,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `)
+  await pool.query(`
+    ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS customer_name TEXT,
+    ADD COLUMN IF NOT EXISTS customer_phone TEXT,
+    ADD COLUMN IF NOT EXISTS customer_email TEXT,
+    ADD COLUMN IF NOT EXISTS customer_address TEXT,
+    ADD COLUMN IF NOT EXISTS items JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS total_price NUMERIC DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS cost_price NUMERIC DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS profit NUMERIC DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'pending',
+    ADD COLUMN IF NOT EXISTS notes TEXT,
+    ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'direct',
+    ADD COLUMN IF NOT EXISTS utm_source TEXT,
+    ADD COLUMN IF NOT EXISTS auto_submitted BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS checkout_url TEXT,
+    ADD COLUMN IF NOT EXISTS external_order_id TEXT,
+    ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
+    ADD COLUMN IF NOT EXISTS admin_notes JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()
+  `)
+}
+
 export async function GET(request: Request) {
   try {
+    await ensureOrdersTable()
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const autoSubmitted = searchParams.get('auto_submitted')
@@ -139,14 +184,7 @@ export async function POST(request: Request) {
       notes, source, utm_source
     } = body
 
-    await pool.query(`
-      ALTER TABLE orders
-      ADD COLUMN IF NOT EXISTS auto_submitted BOOLEAN DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS checkout_url TEXT,
-      ADD COLUMN IF NOT EXISTS external_order_id TEXT,
-      ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
-      ADD COLUMN IF NOT EXISTS admin_notes JSONB DEFAULT '[]'::jsonb
-    `).catch(() => {})
+    await ensureOrdersTable()
 
     const result = await pool.query(
       `INSERT INTO orders (
