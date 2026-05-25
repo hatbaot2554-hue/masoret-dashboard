@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { Pool } from "pg";
 import crypto from "crypto";
+import { createDbPool } from "../../lib/db";
 
 type CheckStatus = "ok" | "missing" | "warning" | "error" | "unknown";
 
@@ -14,10 +14,7 @@ type HealthCheck = {
 
 const WEBSITE_HEALTH_URL = process.env.WEBSITE_HEALTH_URL || "https://masoret-website.vercel.app/api/system-health";
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-});
+const pool = createDbPool();
 
 function getAuthSecret(): string {
   return process.env.DASHBOARD_AUTH_SECRET?.trim() || "";
