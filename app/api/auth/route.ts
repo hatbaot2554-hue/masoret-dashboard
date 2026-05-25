@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { Pool } from 'pg';
 import crypto from 'crypto';
+import { createDbPool } from '../../lib/db';
 import {
   clientIp,
   genericServerError,
@@ -10,10 +10,7 @@ import {
   signDashboardPayload,
 } from '../../lib/security';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+const pool = createDbPool();
 
 function legacyHashPassword(password: string): string {
   return crypto.createHash('sha256').update(password).digest('hex');
