@@ -6,9 +6,13 @@ function normalizedDatabaseUrl(rawUrl: string | undefined): string | undefined {
   if (!rawUrl) return rawUrl;
   try {
     const url = new URL(rawUrl);
-    const sslmode = url.searchParams.get('sslmode');
-    if (!sslmode || !VALID_SSLMODES.has(sslmode)) {
-      url.searchParams.set('sslmode', 'require');
+    if (process.env.NODE_ENV === 'production') {
+      url.searchParams.delete('sslmode');
+    } else {
+      const sslmode = url.searchParams.get('sslmode');
+      if (sslmode && !VALID_SSLMODES.has(sslmode)) {
+        url.searchParams.delete('sslmode');
+      }
     }
     return url.toString();
   } catch {
