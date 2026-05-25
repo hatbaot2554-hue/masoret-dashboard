@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { Pool } from 'pg'
+import { createDbPool } from '../../../lib/db'
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+const pool = createDbPool()
 
 export async function POST(req: Request) {
   const { ids } = await req.json()
