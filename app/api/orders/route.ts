@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createDbPool } from '../../lib/db';
 import { clientIp, genericServerError, isDashboardRequest, rateLimit, sharedSecretAllowed } from '../../lib/security';
+import { findValidCoupon, redeemCoupon } from '../../lib/coupons';
 
 const pool = createDbPool();
 
@@ -55,6 +56,8 @@ async function ensureOrdersTable() {
       checkout_url TEXT,
       external_order_id TEXT,
       status TEXT DEFAULT 'pending',
+      coupon_code TEXT,
+      coupon_discount NUMERIC DEFAULT 0,
       admin_notes JSONB DEFAULT '[]'::jsonb,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
@@ -77,6 +80,8 @@ async function ensureOrdersTable() {
     ADD COLUMN IF NOT EXISTS checkout_url TEXT,
     ADD COLUMN IF NOT EXISTS external_order_id TEXT,
     ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
+    ADD COLUMN IF NOT EXISTS coupon_code TEXT,
+    ADD COLUMN IF NOT EXISTS coupon_discount NUMERIC DEFAULT 0,
     ADD COLUMN IF NOT EXISTS admin_notes JSONB DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()
   `)
@@ -175,9 +180,10 @@ export async function POST(request: Request) {
       notes: string
       source: string
       utm_source: string
+      coupon?: { code?: string; id?: number; discount?: number }
     }
 
-    const {
+    let {
       customer_name, customer_phone, customer_email, customer_address,
       items, total_price, cost_price, profit, payment_method,
       notes, source, utm_source
@@ -187,17 +193,36 @@ export async function POST(request: Request) {
       console.error('Could not ensure orders table before insert', error)
     })
 
+    const couponCode = body.coupon?.code ? String(body.coupon.code).trim().toUpperCase() : ''
+    let couponDiscount = 0
+    if (couponCode) {
+      const match = await findValidCoupon(pool, {
+        code: couponCode,
+        email: customer_email,
+        phone: customer_phone,
+        subtotal: Number(total_price || 0),
+      })
+      if (!match) {
+        return NextResponse.json({ error: 'הקופון לא תקין או שכבר נוצל' }, { status: 400 })
+      }
+      couponDiscount = match.discount
+      await redeemCoupon(pool, Number(match.coupon.id), couponDiscount)
+      total_price = Math.max(0, Number(total_price || 0) - couponDiscount)
+      profit = Number(total_price || 0) - Number(cost_price || 0)
+      notes = [notes, `קופון ${match.coupon.code}: הנחה ₪${couponDiscount}`].filter(Boolean).join(' | ')
+    }
+
     const result = await pool.query(
       `INSERT INTO orders (
         customer_name, customer_phone, customer_email, customer_address,
         items, total_price, cost_price, profit, payment_method,
-        notes, source, utm_source, auto_submitted, status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+        notes, source, utm_source, auto_submitted, status, coupon_code, coupon_discount
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [
         customer_name, customer_phone, customer_email, customer_address,
         JSON.stringify(items), total_price, cost_price || 0, profit || 0,
         payment_method, notes, source || 'direct', utm_source || '',
-        false, 'pending'
+        false, 'pending', couponCode || null, couponDiscount
       ]
     )
     return NextResponse.json(result.rows[0])
