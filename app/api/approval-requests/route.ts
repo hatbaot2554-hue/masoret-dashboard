@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createDbPool } from "../../lib/db";
 import { isDashboardRequest, sharedSecretAllowed } from "../../lib/security";
 import { createApprovalRequest, ensureApprovalRequests, type ApprovalSeverity } from "../../lib/approvalRequests";
+import { executeApprovedAction } from "../../lib/approvedActions";
 
 const pool = createDbPool();
 
@@ -76,6 +77,14 @@ export async function PATCH(request: Request) {
   }
 
   await ensureApprovalRequests(pool);
+  let executionNote = "";
+  if (body.status === "approved") {
+    const existing = await pool.query("SELECT * FROM approval_requests WHERE id = $1 LIMIT 1", [body.id]);
+    if (existing.rows[0]) {
+      executionNote = await executeApprovedAction(pool, existing.rows[0]);
+    }
+  }
+
   const result = await pool.query(
     `
       UPDATE approval_requests
@@ -90,5 +99,5 @@ export async function PATCH(request: Request) {
   );
 
   if (!result.rowCount) return NextResponse.json({ error: "הבקשה לא נמצאה" }, { status: 404 });
-  return NextResponse.json({ request: result.rows[0] });
+  return NextResponse.json({ request: result.rows[0], executionNote });
 }
