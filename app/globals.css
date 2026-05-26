@@ -362,6 +362,128 @@ button:disabled {
   color: #646970;
 }
 
+.health-hero {
+  align-items: center;
+  border: 1px solid;
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 14px;
+  padding: 18px;
+}
+
+.health-hero span {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.health-hero strong {
+  display: block;
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+
+.health-hero p {
+  margin: 0;
+}
+
+.health-hero button {
+  background: #fff;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  min-height: 34px;
+  padding: 0 14px;
+}
+
+.health-hero.healthy {
+  background: #edfaef;
+  border-color: #46c450;
+  color: #14532d;
+}
+
+.health-hero.attention {
+  background: #fff8e5;
+  border-color: #dba617;
+  color: #5f4300;
+}
+
+.health-hero.critical {
+  background: #fcf0f1;
+  border-color: #d63638;
+  color: #8a2424;
+}
+
+.health-metrics div:nth-child(1) {
+  border-top: 4px solid #46c450;
+}
+
+.health-metrics div:nth-child(2) {
+  border-top: 4px solid #dba617;
+}
+
+.health-metrics div:nth-child(3) {
+  border-top: 4px solid #d63638;
+}
+
+.health-metrics div:nth-child(4) {
+  border-top: 4px solid #64748b;
+}
+
+.health-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 14px 0;
+}
+
+.health-card {
+  border: 1px solid #dcdcde;
+  background: #fff;
+  padding: 14px;
+}
+
+.health-card h4 {
+  margin: 0 0 12px;
+}
+
+.health-issue {
+  border-right: 4px solid #dcdcde;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+}
+
+.health-issue.critical {
+  background: #fcf0f1;
+  border-color: #d63638;
+}
+
+.health-issue.attention {
+  background: #fff8e5;
+  border-color: #dba617;
+}
+
+.health-issue strong,
+.health-issue span,
+.health-issue small {
+  display: block;
+}
+
+.health-issue span,
+.health-issue small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.health-issue p {
+  margin: 6px 0;
+}
+
+.health-table td {
+  vertical-align: top;
+}
+
 .empty-row {
   color: var(--muted);
   padding: 48px !important;
