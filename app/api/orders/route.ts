@@ -183,11 +183,13 @@ export async function POST(request: Request) {
       coupon?: { code?: string; id?: number; discount?: number }
     }
 
-    let {
+    const {
       customer_name, customer_phone, customer_email, customer_address,
-      items, total_price, cost_price, profit, payment_method,
-      notes, source, utm_source
+      items, cost_price, payment_method, source, utm_source
     } = body
+    let total_price = body.total_price
+    let profit = body.profit
+    let notes = body.notes
 
     await ensureOrdersTable().catch((error) => {
       console.error('Could not ensure orders table before insert', error)
