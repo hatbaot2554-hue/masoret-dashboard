@@ -114,6 +114,25 @@ type ContactRequest = {
   created_at: string;
 };
 
+type ShabbatWindow = {
+  id: string;
+  name: string;
+  startsAt: string;
+  endsAt: string;
+};
+
+type SiteControlState = {
+  active: boolean;
+  mode: 'open' | 'maintenance' | 'shabbat';
+  message: string;
+  activeUntil?: string | null;
+  activeName?: string | null;
+  manualEnabled: boolean;
+  manualMessage: string;
+  manualUntil?: string | null;
+  shabbatSchedules: ShabbatWindow[];
+};
+
 type AdminView = 'dashboard' | 'orders' | 'products' | 'customers' | 'coupons' | 'reports' | 'graphs' | 'settings' | 'health' | 'management';
 
 const PRODUCT_SITE_URL = 'https://masoret-website.vercel.app';
@@ -509,6 +528,11 @@ export default function Dashboard() {
   const [systemHealthLoading, setSystemHealthLoading] = useState(false);
   const [contactRequests, setContactRequests] = useState<ContactRequest[]>([]);
   const [contactError, setContactError] = useState('');
+  const [siteControl, setSiteControl] = useState<SiteControlState | null>(null);
+  const [siteControlError, setSiteControlError] = useState('');
+  const [siteControlSaving, setSiteControlSaving] = useState(false);
+  const [manualUntilDraft, setManualUntilDraft] = useState('');
+  const [shabbatDraft, setShabbatDraft] = useState({ name: '', startsAt: '', endsAt: '' });
 
   useEffect(() => {
     const token = sessionStorage.getItem('dashboard_token');
@@ -572,6 +596,15 @@ export default function Dashboard() {
         setContactRequests(Array.isArray(data?.requests) ? data.requests : []);
       })
       .catch((error) => setContactError(error.message || 'לא ניתן לטעון פניות צור קשר.'));
+    setSiteControlError('');
+    fetch('/api/site-control', { headers: dashboardAuthHeaders(), cache: 'no-store' })
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || 'לא ניתן לטעון את מצב האתר.');
+        setSiteControl(data);
+        setManualUntilDraft(data?.manualUntil ? String(data.manualUntil).slice(0, 16) : '');
+      })
+      .catch((error) => setSiteControlError(error.message || 'לא ניתן לטעון את מצב האתר.'));
   }, [activeView, authed, canManageSystem]);
 
   useEffect(() => {
@@ -732,6 +765,49 @@ export default function Dashboard() {
     sessionStorage.clear();
     setAuthed(false);
     setCurrentUser(null);
+  }
+
+  async function saveSiteControl(patch: Partial<SiteControlState>) {
+    if (!siteControl) return;
+    setSiteControlSaving(true);
+    setSiteControlError('');
+    try {
+      const res = await fetch('/api/site-control', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
+        body: JSON.stringify({
+          manualEnabled: patch.manualEnabled ?? siteControl.manualEnabled,
+          manualMessage: patch.manualMessage ?? siteControl.manualMessage,
+          manualUntil: patch.manualUntil === undefined ? siteControl.manualUntil : patch.manualUntil,
+          shabbatSchedules: patch.shabbatSchedules ?? siteControl.shabbatSchedules,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || 'לא ניתן לשמור את מצב האתר.');
+      setSiteControl(data);
+      setManualUntilDraft(data?.manualUntil ? String(data.manualUntil).slice(0, 16) : '');
+    } catch (error) {
+      setSiteControlError(error instanceof Error ? error.message : 'לא ניתן לשמור את מצב האתר.');
+    } finally {
+      setSiteControlSaving(false);
+    }
+  }
+
+  function addShabbatSchedule() {
+    if (!siteControl || !shabbatDraft.startsAt || !shabbatDraft.endsAt) return;
+    const nextSchedule: ShabbatWindow = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: shabbatDraft.name.trim() || 'שבת',
+      startsAt: shabbatDraft.startsAt,
+      endsAt: shabbatDraft.endsAt,
+    };
+    saveSiteControl({ shabbatSchedules: [...siteControl.shabbatSchedules, nextSchedule] });
+    setShabbatDraft({ name: '', startsAt: '', endsAt: '' });
+  }
+
+  function removeShabbatSchedule(id: string) {
+    if (!siteControl) return;
+    saveSiteControl({ shabbatSchedules: siteControl.shabbatSchedules.filter((item) => item.id !== id) });
   }
 
   function openAdminView(view: AdminView) {
@@ -1040,6 +1116,58 @@ export default function Dashboard() {
               <section className="wp-panel admin-table-panel">
                 <h3>ניהול מערכת</h3>
                 <p>כאן מרוכזות בדיקות החיבורים והמפתחות של לוח הבקרה ואתר הלקוחות. הערכים עצמם לא מוצגים.</p>
+
+                <section className="management-subsection site-control-box">
+                  <h4>כיבוי והפעלת האתר</h4>
+                  {siteControlError && <div className="login-error">{siteControlError}</div>}
+                  {!siteControl ? (
+                    <p>טוען מצב אתר...</p>
+                  ) : (
+                    <>
+                      <div className={siteControl.active ? 'site-control-status off' : 'site-control-status on'}>
+                        <strong>{siteControl.active ? 'האתר כבוי ללקוחות' : 'האתר פתוח ללקוחות'}</strong>
+                        <span>{siteControl.active ? siteControl.message : 'החנות פעילה כרגיל'}</span>
+                      </div>
+                      <div className="site-control-actions">
+                        <label>
+                          משפט שיוצג בזמן תחזוקה
+                          <input value={siteControl.manualMessage || ''} onChange={(event) => setSiteControl({ ...siteControl, manualMessage: event.target.value })} />
+                        </label>
+                        <label>
+                          כיבוי עד תאריך ושעה
+                          <input type="datetime-local" value={manualUntilDraft} onChange={(event) => setManualUntilDraft(event.target.value)} />
+                        </label>
+                        <button type="button" disabled={siteControlSaving} onClick={() => saveSiteControl({ manualEnabled: true, manualUntil: manualUntilDraft || null })}>השבת אתר עכשיו</button>
+                        <button type="button" disabled={siteControlSaving} onClick={() => saveSiteControl({ manualEnabled: false, manualUntil: null })}>הפעל אתר עכשיו</button>
+                      </div>
+                      <div className="shabbat-control">
+                        <h4>שבת</h4>
+                        <p>אפשר להכניס מראש כמה שבתות שרוצים. בזמן החלון האתר יציג: אני אתר שומר שבת.</p>
+                        <div className="site-control-actions">
+                          <label>שם השבת<input value={shabbatDraft.name} onChange={(event) => setShabbatDraft((prev) => ({ ...prev, name: event.target.value }))} placeholder="שבת פרשת..." /></label>
+                          <label>כיבוי<input type="datetime-local" value={shabbatDraft.startsAt} onChange={(event) => setShabbatDraft((prev) => ({ ...prev, startsAt: event.target.value }))} /></label>
+                          <label>הפעלה<input type="datetime-local" value={shabbatDraft.endsAt} onChange={(event) => setShabbatDraft((prev) => ({ ...prev, endsAt: event.target.value }))} /></label>
+                          <button type="button" disabled={siteControlSaving} onClick={addShabbatSchedule}>הוסף שבת</button>
+                        </div>
+                        {siteControl.shabbatSchedules.length === 0 ? <p>אין שבתות מתוזמנות.</p> : (
+                          <table className="simple-admin-table">
+                            <thead><tr><th>שם</th><th>כיבוי</th><th>הפעלה</th><th>פעולה</th></tr></thead>
+                            <tbody>
+                              {siteControl.shabbatSchedules.map((item) => (
+                                <tr key={item.id}>
+                                  <td>{item.name}</td>
+                                  <td>{new Date(item.startsAt).toLocaleString('he-IL')}</td>
+                                  <td>{new Date(item.endsAt).toLocaleString('he-IL')}</td>
+                                  <td><button type="button" onClick={() => removeShabbatSchedule(item.id)} disabled={siteControlSaving}>מחק</button></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </section>
 
                 {systemHealthLoading && <p>טוען בדיקות מערכת...</p>}
                 {systemHealthError && <div className="login-error">{systemHealthError}</div>}
