@@ -133,6 +133,20 @@ type SiteControlState = {
   shabbatSchedules: ShabbatWindow[];
 };
 
+type ApprovalRequest = {
+  id: number;
+  title: string;
+  description: string;
+  severity: 'info' | 'local' | 'improvement' | 'urgent' | 'security';
+  source: string;
+  recommended_action?: string | null;
+  action_key?: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'done';
+  decided_by?: string | null;
+  decided_at?: string | null;
+  created_at: string;
+};
+
 type AdminView = 'dashboard' | 'orders' | 'products' | 'customers' | 'coupons' | 'reports' | 'graphs' | 'settings' | 'health' | 'management';
 
 const PRODUCT_SITE_URL = 'https://masoret-website.vercel.app';
@@ -533,6 +547,9 @@ export default function Dashboard() {
   const [siteControlSaving, setSiteControlSaving] = useState(false);
   const [manualUntilDraft, setManualUntilDraft] = useState('');
   const [shabbatDraft, setShabbatDraft] = useState({ name: '', startsAt: '', endsAt: '' });
+  const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
+  const [approvalError, setApprovalError] = useState('');
+  const [approvalSaving, setApprovalSaving] = useState<number | null>(null);
 
   useEffect(() => {
     const token = sessionStorage.getItem('dashboard_token');
@@ -605,6 +622,14 @@ export default function Dashboard() {
         setManualUntilDraft(data?.manualUntil ? String(data.manualUntil).slice(0, 16) : '');
       })
       .catch((error) => setSiteControlError(error.message || 'לא ניתן לטעון את מצב האתר.'));
+    setApprovalError('');
+    fetch('/api/approval-requests', { headers: dashboardAuthHeaders(), cache: 'no-store' })
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || 'לא ניתן לטעון בקשות אישור.');
+        setApprovalRequests(Array.isArray(data?.requests) ? data.requests : []);
+      })
+      .catch((error) => setApprovalError(error.message || 'לא ניתן לטעון בקשות אישור.'));
   }, [activeView, authed, canManageSystem]);
 
   useEffect(() => {
@@ -808,6 +833,25 @@ export default function Dashboard() {
   function removeShabbatSchedule(id: string) {
     if (!siteControl) return;
     saveSiteControl({ shabbatSchedules: siteControl.shabbatSchedules.filter((item) => item.id !== id) });
+  }
+
+  async function decideApprovalRequest(id: number, status: 'approved' | 'rejected') {
+    setApprovalSaving(id);
+    setApprovalError('');
+    try {
+      const res = await fetch('/api/approval-requests', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
+        body: JSON.stringify({ id, status, decidedBy: currentUser?.username || 'admin' }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || 'לא ניתן לעדכן את בקשת האישור.');
+      setApprovalRequests((items) => items.map((item) => (item.id === id ? data.request : item)));
+    } catch (error) {
+      setApprovalError(error instanceof Error ? error.message : 'לא ניתן לעדכן את בקשת האישור.');
+    } finally {
+      setApprovalSaving(null);
+    }
   }
 
   function openAdminView(view: AdminView) {
@@ -1017,6 +1061,37 @@ export default function Dashboard() {
                 <p>כאן מרוכזת תמונת מצב חיה של האתר, לוח הבקרה, מסד הנתונים, הסנכרון, האוטומציה והמיילים. הבדיקה לא מציגה סיסמאות או מפתחות.</p>
 
                 {systemHealthLoading && <p>בודק את כל מערך האתר...</p>}
+                <section className="management-subsection approval-box">
+                  <h4>בקשות אישור לתיקונים</h4>
+                  <p>כאן יופיעו בעיות שהמערכת מצאה אבל לא נכון לתקן בלי אישור שלך, כמו שינוי אבטחה, מסד נתונים או פעולה שעלולה להשפיע על לקוחות.</p>
+                  {approvalError && <div className="login-error">{approvalError}</div>}
+                  {approvalRequests.length === 0 ? (
+                    <p>אין כרגע בקשות שממתינות לאישור.</p>
+                  ) : (
+                    <div className="approval-list">
+                      {approvalRequests.map((request) => (
+                        <article className={`approval-card ${request.severity}`} key={request.id}>
+                          <div>
+                            <strong>{request.title}</strong>
+                            <span>{request.description}</span>
+                            {request.recommended_action && <small>פעולה מומלצת: {request.recommended_action}</small>}
+                            <small>מקור: {request.source} | נפתח: {new Date(request.created_at).toLocaleString('he-IL')}</small>
+                          </div>
+                          <div className="approval-card-actions">
+                            <span className={`approval-status ${request.status}`}>{request.status === 'pending' ? 'ממתין לאישור' : request.status === 'approved' ? 'אושר' : request.status === 'rejected' ? 'נדחה' : 'בוצע'}</span>
+                            {request.status === 'pending' && (
+                              <>
+                                <button type="button" disabled={approvalSaving === request.id} onClick={() => decideApprovalRequest(request.id, 'approved')}>אשר תיקון</button>
+                                <button type="button" disabled={approvalSaving === request.id} onClick={() => decideApprovalRequest(request.id, 'rejected')}>דחה</button>
+                              </>
+                            )}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
                 {systemHealthError && <div className="login-error">{systemHealthError}</div>}
 
                 {systemHealth && (() => {
