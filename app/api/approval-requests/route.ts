@@ -72,13 +72,14 @@ export async function PATCH(request: Request) {
     decidedBy?: string;
   };
 
-  if (!body.id || !["approved", "rejected", "done"].includes(String(body.status))) {
+  const nextStatus = body.status;
+  if (!body.id || (nextStatus !== "approved" && nextStatus !== "rejected" && nextStatus !== "done")) {
     return NextResponse.json({ error: "בקשה לא תקינה" }, { status: 400 });
   }
 
   await ensureApprovalRequests(pool);
   let executionNote = "";
-  if (body.status === "approved") {
+  if (nextStatus === "approved") {
     const existing = await pool.query("SELECT * FROM approval_requests WHERE id = $1 LIMIT 1", [body.id]);
     if (existing.rows[0]) {
       executionNote = await executeApprovedAction(pool, existing.rows[0]);
@@ -95,7 +96,7 @@ export async function PATCH(request: Request) {
       WHERE id = $3
       RETURNING *
     `,
-    [body.status, body.decidedBy || "admin", body.id]
+    [nextStatus, body.decidedBy || "admin", body.id]
   );
 
   if (!result.rowCount) return NextResponse.json({ error: "הבקשה לא נמצאה" }, { status: 404 });
