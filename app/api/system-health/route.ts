@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createDbPool } from "../../lib/db";
+import { createApprovalRequest } from "../../lib/approvalRequests";
 
 type CheckStatus = "ok" | "missing" | "warning" | "error" | "unknown";
 
@@ -551,6 +552,24 @@ function buildSummary(checks: HealthCheck[]): HealthSummary {
   };
 }
 
+async function createApprovalRequestsForCriticalChecks(checks: HealthCheck[]) {
+  const needsApproval = checks.filter((item) => item.status === "error" || item.status === "missing");
+  await Promise.all(
+    needsApproval.slice(0, 8).map((item) =>
+      createApprovalRequest(pool, {
+        title: `${item.label} - ${item.scope}`,
+        description: item.detail,
+        severity: item.scope.includes("אבטחה") ? "security" : item.status === "error" ? "urgent" : "local",
+        source: "system-health",
+        recommendedAction: item.nextStep || item.impact || "בדיקה ותיקון בלוח הבקרה.",
+        actionKey: item.key,
+        payload: item,
+        fingerprint: `system-health:${item.key}:${item.status}`,
+      })
+    )
+  );
+}
+
 export async function GET(request: Request) {
   if (!isDashboardRequest(request)) {
     return NextResponse.json({ error: "לא מורשה" }, { status: 401 });
@@ -572,6 +591,9 @@ export async function GET(request: Request) {
     mailCheck,
     ...secretChecks(),
   ];
+  await createApprovalRequestsForCriticalChecks(checks).catch((error) =>
+    console.error("approval request creation failed", error)
+  );
 
   return NextResponse.json({
     generatedAt: new Date().toISOString(),
