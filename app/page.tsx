@@ -85,12 +85,22 @@ type HealthCheck = {
   scope: string;
   status: CheckStatus;
   detail: string;
+  impact?: string;
+  nextStep?: string;
+};
+
+type HealthSummary = {
+  status: 'healthy' | 'attention' | 'critical';
+  label: string;
+  detail: string;
+  totals: Record<CheckStatus, number>;
 };
 
 type HealthResponse = {
   generatedAt: string;
   safe: boolean;
   message: string;
+  summary?: HealthSummary;
   checks: HealthCheck[];
 };
 
@@ -104,7 +114,7 @@ type ContactRequest = {
   created_at: string;
 };
 
-type AdminView = 'dashboard' | 'orders' | 'products' | 'customers' | 'coupons' | 'reports' | 'graphs' | 'settings' | 'management';
+type AdminView = 'dashboard' | 'orders' | 'products' | 'customers' | 'coupons' | 'reports' | 'graphs' | 'settings' | 'health' | 'management';
 
 const PRODUCT_SITE_URL = 'https://masoret-website.vercel.app';
 
@@ -151,6 +161,7 @@ const NAV_ITEMS: { key: AdminView; label: string }[] = [
   { key: 'reports', label: 'דוחות' },
   { key: 'graphs', label: 'גרפים' },
   { key: 'settings', label: 'הגדרות' },
+  { key: 'health', label: 'בריאות האתר' },
   { key: 'management', label: 'ניהול' },
 ];
 
@@ -393,6 +404,24 @@ function systemStatusClass(status: CheckStatus) {
   }
 }
 
+function healthSummaryClass(status: HealthSummary['status'] | undefined) {
+  if (status === 'healthy') return 'health-hero healthy';
+  if (status === 'attention') return 'health-hero attention';
+  return 'health-hero critical';
+}
+
+function healthSummaryFallback(checks: HealthCheck[]): HealthSummary {
+  const totals: Record<CheckStatus, number> = { ok: 0, missing: 0, warning: 0, error: 0, unknown: 0 };
+  for (const check of checks) totals[check.status] += 1;
+  if (totals.error || totals.missing) {
+    return { status: 'critical', label: 'דורש טיפול מיידי', detail: 'נמצאו תקלות או הגדרות חסרות.', totals };
+  }
+  if (totals.warning || totals.unknown) {
+    return { status: 'attention', label: 'תקין עם נקודות לבדיקה', detail: 'המערכת עובדת, ויש כמה נקודות למעקב.', totals };
+  }
+  return { status: 'healthy', label: 'המערכת תקינה', detail: 'כל הבדיקות הזמינות עברו בהצלחה.', totals };
+}
+
 function IconButton({ title, children, onClick }: { title: string; children: React.ReactNode; onClick?: () => void }) {
   return (
     <button className="icon-button" type="button" title={title} onClick={onClick}>
@@ -519,10 +548,10 @@ export default function Dashboard() {
   const canManageSystem =
     currentUser?.username === 'admin' ||
     ['admin', 'owner', 'super_admin', 'מנהל', 'בעלים'].includes(normalizedRole);
-  const visibleNavItems = NAV_ITEMS.filter((item) => item.key !== 'management' || canManageSystem);
+  const visibleNavItems = NAV_ITEMS.filter((item) => !['management', 'health'].includes(item.key) || canManageSystem);
 
   useEffect(() => {
-    if (!authed || activeView !== 'management' || !canManageSystem) return;
+    if (!authed || (activeView !== 'management' && activeView !== 'health') || !canManageSystem) return;
 
     setSystemHealthLoading(true);
     setSystemHealthError('');
@@ -903,6 +932,107 @@ export default function Dashboard() {
               <p>מצב הזמנות אמת אצל הספק כבוי כל עוד לא מוגדר GitHub Secret בשם AUTO_ORDER_SUBMIT=true.</p>
               <p>הדאשבורד מחובר למסד הנתונים ומ��יג נתונים חיים מההזמנות.</p>
             </section>
+          )}
+
+          {activeView === 'health' && (
+            canManageSystem ? (
+              <section className="wp-panel admin-table-panel">
+                <h3>בריאות האתר</h3>
+                <p>כאן מרוכזת תמונת מצב חיה של האתר, לוח הבקרה, מסד הנתונים, הסנכרון, האוטומציה והמיילים. הבדיקה לא מציגה סיסמאות או מפתחות.</p>
+
+                {systemHealthLoading && <p>בודק את כל מערך האתר...</p>}
+                {systemHealthError && <div className="login-error">{systemHealthError}</div>}
+
+                {systemHealth && (() => {
+                  const summary = systemHealth.summary || healthSummaryFallback(systemHealth.checks);
+                  const criticalChecks = systemHealth.checks.filter((check) => check.status === 'error' || check.status === 'missing');
+                  const attentionChecks = systemHealth.checks.filter((check) => check.status === 'warning' || check.status === 'unknown');
+
+                  return (
+                    <>
+                      <section className={healthSummaryClass(summary.status)}>
+                        <div>
+                          <span>מצב כללי</span>
+                          <strong>{summary.label}</strong>
+                          <p>{summary.detail}</p>
+                        </div>
+                        <button type="button" onClick={() => setActiveView('management')}>פתח ניהול</button>
+                      </section>
+
+                      <section className="metric-grid health-metrics">
+                        <div><span>תקין</span><strong>{summary.totals.ok}</strong></div>
+                        <div><span>אזהרות</span><strong>{summary.totals.warning}</strong></div>
+                        <div><span>שגיאות</span><strong>{summary.totals.error}</strong></div>
+                        <div><span>לא אומת</span><strong>{summary.totals.unknown}</strong></div>
+                      </section>
+
+                      <section className="health-grid">
+                        <div className="health-card">
+                          <h4>מה דורש טיפול</h4>
+                          {criticalChecks.length === 0 ? (
+                            <p>אין כרגע תקלות קריטיות.</p>
+                          ) : criticalChecks.map((check) => (
+                            <article key={`${check.scope}-${check.key}`} className="health-issue critical">
+                              <strong>{check.label}</strong>
+                              <span>{check.scope}</span>
+                              <p>{check.detail}</p>
+                              {check.nextStep && <small>{check.nextStep}</small>}
+                            </article>
+                          ))}
+                        </div>
+
+                        <div className="health-card">
+                          <h4>נקודות למעקב</h4>
+                          {attentionChecks.length === 0 ? (
+                            <p>אין כרגע אזהרות פתוחות.</p>
+                          ) : attentionChecks.slice(0, 8).map((check) => (
+                            <article key={`${check.scope}-${check.key}`} className="health-issue attention">
+                              <strong>{check.label}</strong>
+                              <span>{check.scope}</span>
+                              <p>{check.detail}</p>
+                              {check.nextStep && <small>{check.nextStep}</small>}
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+
+                      <table className="simple-admin-table health-table">
+                        <thead>
+                          <tr>
+                            <th>מערכת</th>
+                            <th>בדיקה</th>
+                            <th>מצב</th>
+                            <th>פירוט</th>
+                            <th>צעד מומלץ</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {systemHealth.checks.map((check) => (
+                            <tr key={`${check.scope}-${check.key}`}>
+                              <td>{check.scope}</td>
+                              <td>
+                                <strong>{check.label}</strong>
+                                <small>{check.key}</small>
+                              </td>
+                              <td><span className={systemStatusClass(check.status)}>{systemStatusLabel(check.status)}</span></td>
+                              <td>{check.detail}</td>
+                              <td>{check.nextStep || check.impact || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+
+                      <p>עודכן לאחרונה: {new Date(systemHealth.generatedAt).toLocaleString('he-IL')}</p>
+                    </>
+                  );
+                })()}
+              </section>
+            ) : (
+              <section className="wp-panel admin-placeholder">
+                <h3>אין הרשאה</h3>
+                <p>לשונית בריאות האתר פתוחה רק למנהל מערכת או לבעלים.</p>
+              </section>
+            )
           )}
 
           {activeView === 'management' && (
