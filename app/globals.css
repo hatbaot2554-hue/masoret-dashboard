@@ -484,6 +484,73 @@ button:disabled {
   vertical-align: top;
 }
 
+.site-control-box {
+  border: 1px solid #dcdcde;
+  margin: 16px 0;
+  padding: 14px;
+}
+
+.site-control-status {
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 14px;
+  padding: 14px;
+}
+
+.site-control-status.on {
+  background: #edfaef;
+  border: 1px solid #46c450;
+  color: #14532d;
+}
+
+.site-control-status.off {
+  background: #fcf0f1;
+  border: 1px solid #d63638;
+  color: #8a2424;
+}
+
+.site-control-status strong {
+  font-size: 18px;
+}
+
+.site-control-actions {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 12px 0;
+}
+
+.site-control-actions label {
+  color: var(--muted);
+  display: grid;
+  gap: 5px;
+}
+
+.site-control-actions input {
+  border: 1px solid #8c8f94;
+  border-radius: 3px;
+  min-height: 34px;
+  padding: 5px 8px;
+}
+
+.site-control-actions button,
+.shabbat-control button {
+  background: #f6f7f7;
+  border: 1px solid var(--blue);
+  border-radius: 3px;
+  color: var(--blue);
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.shabbat-control {
+  border-top: 1px solid #dcdcde;
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
 .empty-row {
   color: var(--muted);
   padding: 48px !important;
