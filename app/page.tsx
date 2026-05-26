@@ -147,6 +147,22 @@ type ApprovalRequest = {
   created_at: string;
 };
 
+type CouponRecord = {
+  id: number;
+  code: string;
+  owner_name?: string | null;
+  owner_email?: string | null;
+  owner_phone?: string | null;
+  benefit_type: 'percent' | 'fixed';
+  benefit_value: number;
+  used_count: number;
+  usage_limit: number;
+  status: string;
+  source_order_id?: string | null;
+  note?: string | null;
+  created_at: string;
+};
+
 type AdminView = 'dashboard' | 'orders' | 'products' | 'customers' | 'coupons' | 'reports' | 'graphs' | 'settings' | 'health' | 'management';
 
 const PRODUCT_SITE_URL = 'https://masoret-website.vercel.app';
@@ -550,6 +566,10 @@ export default function Dashboard() {
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
   const [approvalError, setApprovalError] = useState('');
   const [approvalSaving, setApprovalSaving] = useState<number | null>(null);
+  const [coupons, setCoupons] = useState<CouponRecord[]>([]);
+  const [couponDraft, setCouponDraft] = useState({ ownerName: '', ownerEmail: '', ownerPhone: '', benefitType: 'percent', benefitValue: '10', note: '' });
+  const [couponError, setCouponError] = useState('');
+  const [couponSaving, setCouponSaving] = useState(false);
 
   useEffect(() => {
     const token = sessionStorage.getItem('dashboard_token');
@@ -590,6 +610,18 @@ export default function Dashboard() {
     currentUser?.username === 'admin' ||
     ['admin', 'owner', 'super_admin', 'מנהל', 'בעלים'].includes(normalizedRole);
   const visibleNavItems = NAV_ITEMS.filter((item) => !['management', 'health'].includes(item.key) || canManageSystem);
+
+  useEffect(() => {
+    if (!authed || activeView !== 'coupons' || !canManageSystem) return;
+    setCouponError('');
+    fetch('/api/coupons', { headers: dashboardAuthHeaders(), cache: 'no-store' })
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || 'לא ניתן לטעון קופונים.');
+        setCoupons(Array.isArray(data?.coupons) ? data.coupons : []);
+      })
+      .catch((error) => setCouponError(error.message || 'לא ניתן לטעון קופונים.'));
+  }, [activeView, authed, canManageSystem]);
 
   useEffect(() => {
     if (!authed || (activeView !== 'management' && activeView !== 'health') || !canManageSystem) return;
@@ -854,6 +886,33 @@ export default function Dashboard() {
     }
   }
 
+  async function createCoupon() {
+    setCouponSaving(true);
+    setCouponError('');
+    try {
+      const res = await fetch('/api/coupons', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
+        body: JSON.stringify({
+          ownerName: couponDraft.ownerName,
+          ownerEmail: couponDraft.ownerEmail,
+          ownerPhone: couponDraft.ownerPhone,
+          benefitType: couponDraft.benefitType,
+          benefitValue: Number(couponDraft.benefitValue || 0),
+          note: couponDraft.note,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || 'לא ניתן ליצור קופון.');
+      setCoupons((items) => [data.coupon, ...items]);
+      setCouponDraft({ ownerName: '', ownerEmail: '', ownerPhone: '', benefitType: 'percent', benefitValue: '10', note: '' });
+    } catch (error) {
+      setCouponError(error instanceof Error ? error.message : 'לא ניתן ליצור קופון.');
+    } finally {
+      setCouponSaving(false);
+    }
+  }
+
   function openAdminView(view: AdminView) {
     setSelected(null);
     setActiveView(view);
@@ -1040,9 +1099,41 @@ export default function Dashboard() {
           )}
 
           {activeView === 'coupons' && (
-            <section className="wp-panel admin-placeholder">
-              <h3>קופונים</h3>
-              <p>אין כרגע מנגנון קופונים במסד הנתונים. הכפתור פעיל ומוכן לחיבור כשנוסיף טבלת קופונים.</p>
+            <section className="wp-panel admin-table-panel">
+              <h3>קופונים וזיכויים</h3>
+              <p>כאן אפשר ליצור זיכוי ללקוח: קוד קופון בן 5 תווים, או זיכוי שמזוהה לפי מייל/טלפון של הלקוח.</p>
+              {couponError && <div className="login-error">{couponError}</div>}
+              <div className="coupon-create-grid">
+                <input placeholder="שם לקוח" value={couponDraft.ownerName} onChange={(event) => setCouponDraft({ ...couponDraft, ownerName: event.target.value })} />
+                <input placeholder="מייל לקוח" value={couponDraft.ownerEmail} onChange={(event) => setCouponDraft({ ...couponDraft, ownerEmail: event.target.value })} />
+                <input placeholder="טלפון לקוח" value={couponDraft.ownerPhone} onChange={(event) => setCouponDraft({ ...couponDraft, ownerPhone: event.target.value })} />
+                <select value={couponDraft.benefitType} onChange={(event) => setCouponDraft({ ...couponDraft, benefitType: event.target.value })}>
+                  <option value="percent">אחוז הנחה</option>
+                  <option value="fixed">סכום זיכוי</option>
+                </select>
+                <input type="number" min="0" placeholder="ערך" value={couponDraft.benefitValue} onChange={(event) => setCouponDraft({ ...couponDraft, benefitValue: event.target.value })} />
+                <input placeholder="הערה" value={couponDraft.note} onChange={(event) => setCouponDraft({ ...couponDraft, note: event.target.value })} />
+                <button type="button" onClick={createCoupon} disabled={couponSaving}>צור קופון</button>
+              </div>
+
+              <table className="simple-admin-table">
+                <thead>
+                  <tr><th>קוד</th><th>לקוח</th><th>הטבה</th><th>סטטוס</th><th>נוצר</th></tr>
+                </thead>
+                <tbody>
+                  {coupons.length === 0 ? (
+                    <tr><td colSpan={5}>אין קופונים להצגה.</td></tr>
+                  ) : coupons.map((coupon) => (
+                    <tr key={coupon.id}>
+                      <td><strong>{coupon.code}</strong></td>
+                      <td>{coupon.owner_name || coupon.owner_email || coupon.owner_phone || '-'}</td>
+                      <td>{coupon.benefit_type === 'fixed' ? `₪${coupon.benefit_value}` : `${coupon.benefit_value}%`}</td>
+                      <td>{coupon.status} ({coupon.used_count}/{coupon.usage_limit})</td>
+                      <td>{new Date(coupon.created_at).toLocaleString('he-IL')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </section>
           )}
 
