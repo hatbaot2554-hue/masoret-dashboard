@@ -19,7 +19,7 @@ type MonitorCheck = {
 
 const pool = createDbPool();
 
-const WEBSITE_URL = process.env.WEBSITE_URL || process.env.SITE_URL || "https://masoret-website.vercel.app";
+const WEBSITE_URL = process.env.WEBSITE_URL || "https://masoret-website.vercel.app";
 const PRODUCTS_CATALOG_URL =
   process.env.PRODUCTS_CATALOG_URL ||
   "https://raw.githubusercontent.com/hatbaot2554-hue/masoret-automation/main/products.json";
