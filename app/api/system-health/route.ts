@@ -22,7 +22,7 @@ type HealthSummary = {
   totals: Record<CheckStatus, number>;
 };
 
-const WEBSITE_URL = process.env.WEBSITE_URL || process.env.SITE_URL || "https://masoret-website.vercel.app";
+const WEBSITE_URL = process.env.WEBSITE_URL || "https://masoret-website.vercel.app";
 const WEBSITE_HEALTH_URL = process.env.WEBSITE_HEALTH_URL || `${WEBSITE_URL}/api/system-health`;
 const PRODUCTS_CATALOG_URL =
   process.env.PRODUCTS_CATALOG_URL ||
