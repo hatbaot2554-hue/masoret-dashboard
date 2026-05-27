@@ -10,14 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run Masoret site monitor
-        if: ${{ secrets.AUTOMATION_API_SECRET != '' }}
+        env:
+          AUTOMATION_API_SECRET: ${{ secrets.AUTOMATION_API_SECRET }}
         run: |
-          curl --fail --show-error --silent \
-            -H "x-automation-secret: ${{ secrets.AUTOMATION_API_SECRET }}" \
-            "https://masoret-dashboard.vercel.app/api/monitor/run"
+          if [ -z "$AUTOMATION_API_SECRET" ]; then
+            echo "AUTOMATION_API_SECRET is not configured in GitHub repository secrets."
+            echo "The Vercel daily cron will still run if it is deployed."
+            exit 0
+          fi
 
-      - name: Explain missing secret
-        if: ${{ secrets.AUTOMATION_API_SECRET == '' }}
-        run: |
-          echo "AUTOMATION_API_SECRET is not configured in GitHub repository secrets."
-          echo "The Vercel daily cron will still run if it is deployed."
+          curl --fail --show-error --silent \
+            -H "x-automation-secret: $AUTOMATION_API_SECRET" \
+            "https://masoret-dashboard.vercel.app/api/monitor/run"
