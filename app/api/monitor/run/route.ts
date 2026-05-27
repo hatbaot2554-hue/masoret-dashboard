@@ -23,6 +23,15 @@ const WEBSITE_URL = process.env.WEBSITE_URL || "https://masoret-website.vercel.a
 const PRODUCTS_CATALOG_URL =
   process.env.PRODUCTS_CATALOG_URL ||
   "https://raw.githubusercontent.com/hatbaot2554-hue/masoret-automation/main/products.json";
+const GITHUB_OWNER = process.env.GITHUB_OWNER || "hatbaot2554-hue";
+const GITHUB_REPOS = (process.env.MONITORED_GITHUB_REPOS || "masoret-website,masoret-dashboard,masoret-automation")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+function configured(name: string) {
+  return Boolean(process.env[name]?.trim());
+}
 
 function cronAllowed(request: Request) {
   const secret = process.env.CRON_SECRET?.trim();
@@ -328,6 +337,229 @@ async function checkCatalog(): Promise<MonitorCheck[]> {
   }
 }
 
+async function checkGitHubRepository(repo: string): Promise<MonitorCheck[]> {
+  const headers: HeadersInit = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "masoret-site-monitor",
+  };
+  if (process.env.GITHUB_MONITOR_TOKEN) {
+    headers.Authorization = `Bearer ${process.env.GITHUB_MONITOR_TOKEN}`;
+  }
+
+  try {
+    const [repoResponse, runsResponse] = await Promise.all([
+      timedFetch(`https://api.github.com/repos/${GITHUB_OWNER}/${repo}`, { headers }, 12000),
+      timedFetch(`https://api.github.com/repos/${GITHUB_OWNER}/${repo}/actions/runs?per_page=1`, { headers }, 12000),
+    ]);
+
+    const checks: MonitorCheck[] = [];
+    checks.push(
+      monitorCheck({
+        key: `github:${repo}:repo`,
+        title: `GitHub - ${repo}`,
+        area: "GitHub וקוד",
+        status: repoResponse.ok ? "ok" : repoResponse.status === 401 || repoResponse.status === 403 || repoResponse.status === 404 ? "warning" : "error",
+        detail: repoResponse.ok
+          ? "המאגר זמין לבדיקה."
+          : `בדיקת המאגר החזירה ${repoResponse.status}.`,
+        recommendedAction: repoResponse.ok ? undefined : "הגדר GITHUB_MONITOR_TOKEN עם הרשאת קריאה למאגרים הרלוונטיים.",
+        severity: repoResponse.ok ? undefined : "security",
+        payload: { repo, status: repoResponse.status },
+      })
+    );
+
+    if (!runsResponse.ok) {
+      checks.push(
+        monitorCheck({
+          key: `github:${repo}:actions`,
+          title: `GitHub Actions - ${repo}`,
+          area: "אוטומציות",
+          status: "warning",
+          detail: `לא ניתן לקרוא ריצות GitHub Actions עבור ${repo}. תשובת GitHub: ${runsResponse.status}.`,
+          recommendedAction: "הגדר GITHUB_MONITOR_TOKEN כדי לבדוק ריצות אוטומציה, כשלונות וסנכרונים.",
+          severity: "local",
+          payload: { repo, status: runsResponse.status },
+        })
+      );
+      return checks;
+    }
+
+    const runsData = await runsResponse.json().catch(() => null);
+    const latest = Array.isArray(runsData?.workflow_runs) ? runsData.workflow_runs[0] : null;
+    checks.push(
+      monitorCheck({
+        key: `github:${repo}:actions`,
+        title: `GitHub Actions - ${repo}`,
+        area: "אוטומציות",
+        status: latest?.conclusion === "failure" || latest?.conclusion === "cancelled" ? "warning" : "ok",
+        detail: latest
+          ? `הריצה האחרונה: ${latest.name || "workflow"} - ${latest.status || "unknown"} / ${latest.conclusion || "pending"}.`
+          : "לא נמצאו ריצות אוטומציה אחרונות.",
+        recommendedAction:
+          latest?.conclusion === "failure" || latest?.conclusion === "cancelled"
+            ? "פתח את GitHub Actions ובדוק את הלוג של הריצה האחרונה."
+            : undefined,
+        severity: latest?.conclusion === "failure" ? "urgent" : "local",
+        payload: { repo, run: latest?.html_url, conclusion: latest?.conclusion, status: latest?.status },
+      })
+    );
+    return checks;
+  } catch (error) {
+    return [
+      monitorCheck({
+        key: `github:${repo}:unreachable`,
+        title: `GitHub - ${repo}`,
+        area: "GitHub וקוד",
+        status: "warning",
+        detail: error instanceof Error ? error.message : "בדיקת GitHub נכשלה.",
+        recommendedAction: "בדוק חיבור רשת והרשאת GITHUB_MONITOR_TOKEN.",
+        severity: "local",
+        payload: { repo },
+      }),
+    ];
+  }
+}
+
+async function checkGitHub(): Promise<MonitorCheck[]> {
+  const checks: MonitorCheck[] = [
+    monitorCheck({
+      key: "github:monitor-token",
+      title: "הרשאת בדיקת GitHub",
+      area: "GitHub וקוד",
+      status: configured("GITHUB_MONITOR_TOKEN") ? "ok" : "warning",
+      detail: configured("GITHUB_MONITOR_TOKEN")
+        ? "קיים טוקן ייעודי לקריאת מאגרים וריצות."
+        : "לא מוגדר GITHUB_MONITOR_TOKEN, לכן בדיקות GitHub מוגבלות למה שציבורי בלבד.",
+      recommendedAction: configured("GITHUB_MONITOR_TOKEN")
+        ? undefined
+        : "כדי לבדוק את כל הקוד, הריצות והאבטחה במאגרים פרטיים, הגדר GITHUB_MONITOR_TOKEN לקריאה בלבד.",
+      severity: configured("GITHUB_MONITOR_TOKEN") ? undefined : "security",
+    }),
+  ];
+  const repoChecks = await Promise.all(GITHUB_REPOS.map((repo) => checkGitHubRepository(repo)));
+  return [...checks, ...repoChecks.flat()];
+}
+
+async function checkResend(): Promise<MonitorCheck> {
+  if (!configured("RESEND_API_KEY")) {
+    return monitorCheck({
+      key: "resend:api-key",
+      title: "Resend - שליחת מיילים",
+      area: "מיילים",
+      status: "warning",
+      detail: "לא מוגדר RESEND_API_KEY בלוח הבקרה.",
+      recommendedAction: "הגדר RESEND_API_KEY כדי לשלוח התראות, איפוס סיסמה ובקשות אישור.",
+      severity: "local",
+    });
+  }
+
+  try {
+    const response = await timedFetch("https://api.resend.com/domains", {
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+    });
+    return monitorCheck({
+      key: "resend:api",
+      title: "Resend - שליחת מיילים",
+      area: "מיילים",
+      status: response.ok || response.status === 401 || response.status === 403 ? "ok" : "warning",
+      detail: response.ok
+        ? "Resend ענה בהצלחה."
+        : `Resend ענה בסטטוס ${response.status}; המפתח קיים אך כדאי לבדוק הרשאות ודומיין.`,
+      recommendedAction: response.ok ? undefined : "בדוק את הדומיין המאומת ואת הרשאות Resend.",
+      severity: response.ok ? undefined : "local",
+      payload: { status: response.status },
+    });
+  } catch (error) {
+    return monitorCheck({
+      key: "resend:api",
+      title: "Resend - שליחת מיילים",
+      area: "מיילים",
+      status: "warning",
+      detail: error instanceof Error ? error.message : "בדיקת Resend נכשלה.",
+      recommendedAction: "בדוק את Resend ואת החיבור החיצוני.",
+      severity: "local",
+    });
+  }
+}
+
+async function checkGemini(): Promise<MonitorCheck> {
+  if (!configured("GEMINI_API_KEY")) {
+    return monitorCheck({
+      key: "ai:gemini",
+      title: "Gemini / AI Studio",
+      area: "AI ושירות לקוחות",
+      status: "warning",
+      detail: "לא מוגדר GEMINI_API_KEY בלוח הבקרה.",
+      recommendedAction: "הגדר GEMINI_API_KEY כדי לבדוק ולתפעל את שירות הלקוחות AI.",
+      severity: "local",
+    });
+  }
+
+  try {
+    const response = await timedFetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`, {}, 12000);
+    return monitorCheck({
+      key: "ai:gemini",
+      title: "Gemini / AI Studio",
+      area: "AI ושירות לקוחות",
+      status: response.ok ? "ok" : "warning",
+      detail: response.ok ? "Gemini ענה בהצלחה." : `Gemini החזיר ${response.status}.`,
+      recommendedAction: response.ok ? undefined : "בדוק את מפתח Gemini ואת מכסת השימוש ב-Google AI Studio.",
+      severity: response.ok ? undefined : "local",
+      payload: { status: response.status },
+    });
+  } catch (error) {
+    return monitorCheck({
+      key: "ai:gemini",
+      title: "Gemini / AI Studio",
+      area: "AI ושירות לקוחות",
+      status: "warning",
+      detail: error instanceof Error ? error.message : "בדיקת Gemini נכשלה.",
+      recommendedAction: "בדוק מפתח Gemini, מכסה וחיבור לשירות Google AI Studio.",
+      severity: "local",
+    });
+  }
+}
+
+function checkExternalAccessCoverage(): MonitorCheck[] {
+  const required = [
+    {
+      key: "vercel:token",
+      title: "Vercel - בדיקת פריסות וסביבות",
+      env: "VERCEL_MONITOR_TOKEN",
+      area: "Vercel",
+      action: "כדי לבדוק פריסות, לוגים ומשתני סביבה ב-Vercel, הגדר VERCEL_MONITOR_TOKEN לקריאה בלבד.",
+    },
+    {
+      key: "aiven:token",
+      title: "Aiven - ניטור מסד נתונים",
+      env: "AIVEN_MONITOR_TOKEN",
+      area: "Aiven ומסד נתונים",
+      action: "כדי לבדוק מצב שירות Aiven, אחסון, CPU וגיבויים, הגדר AIVEN_MONITOR_TOKEN לקריאה בלבד.",
+    },
+    {
+      key: "security:code-audit",
+      title: "סריקת קוד ואבטחה מלאה",
+      env: "GITHUB_MONITOR_TOKEN",
+      area: "אבטחת קוד",
+      action: "כדי לסרוק את כל המאגרים, workflows וקבצי ההגדרה, נדרש GITHUB_MONITOR_TOKEN לקריאה בלבד.",
+    },
+  ];
+
+  return required.map((item) =>
+    monitorCheck({
+      key: item.key,
+      title: item.title,
+      area: item.area,
+      status: configured(item.env) ? "ok" : "warning",
+      detail: configured(item.env)
+        ? `ההרשאה ${item.env} מוגדרת.`
+        : `ההרשאה ${item.env} עדיין לא מוגדרת, ולכן הכיסוי בתחום זה חלקי.`,
+      recommendedAction: configured(item.env) ? undefined : item.action,
+      severity: configured(item.env) ? undefined : "security",
+    })
+  );
+}
+
 async function createApprovalRequests(checks: MonitorCheck[]) {
   const actionable = checks.filter((item) => item.status === "error" || item.status === "warning");
   await Promise.all(
@@ -363,8 +595,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "לא מורשה" }, { status: 401 });
   }
 
-  const [website, database, catalog] = await Promise.all([checkWebsiteHealth(), checkDatabase(), checkCatalog()]);
-  const checks = [...website, ...database, ...catalog];
+  const [website, database, catalog, github, resend, gemini] = await Promise.all([
+    checkWebsiteHealth(),
+    checkDatabase(),
+    checkCatalog(),
+    checkGitHub(),
+    checkResend(),
+    checkGemini(),
+  ]);
+  const checks = [...website, ...database, ...catalog, ...github, resend, gemini, ...checkExternalAccessCoverage()];
   await createApprovalRequests(checks).catch((error) => console.error("monitor approval request creation failed", error));
 
   return NextResponse.json({
