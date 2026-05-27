@@ -118,8 +118,8 @@ async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
 
     const data = await response.json().catch(() => null);
     const innerChecks: Array<{ status?: string }> = Array.isArray(data?.checks) ? data.checks : [];
-    const failing = innerChecks.filter((item) => ["error", "missing"].includes(String(item?.status || "")));
-    const warning = innerChecks.filter((item) => ["warning", "unknown"].includes(String(item?.status || "")));
+    const failing = innerChecks.filter((item) => String(item?.status || "") === "error");
+    const warning = innerChecks.filter((item) => ["missing", "warning", "unknown"].includes(String(item?.status || "")));
     checks.push(
       monitorCheck({
         key: "website:system-health",
