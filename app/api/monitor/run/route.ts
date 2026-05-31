@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createDbPool } from "../../../lib/db";
 import { createApprovalRequest } from "../../../lib/approvalRequests";
-import { ensureCouponsTable } from "../../../lib/coupons";
 import { sharedSecretAllowed } from "../../../lib/security";
 
 type MonitorStatus = "ok" | "warning" | "error";
@@ -33,6 +32,19 @@ function configured(name: string) {
   return Boolean(process.env[name]?.trim());
 }
 
+function firstConfigured(...names: string[]) {
+  return names.find((name) => configured(name));
+}
+
+function githubMonitorToken() {
+  return (
+    process.env.GITHUB_MONITOR_TOKEN?.trim() ||
+    process.env.REPAIR_GITHUB_TOKEN?.trim() ||
+    process.env.GITHUB_REPAIR_TOKEN?.trim() ||
+    ""
+  );
+}
+
 function cronAllowed(request: Request) {
   const secret = process.env.CRON_SECRET?.trim();
   const userAgent = request.headers.get("user-agent") || "";
@@ -54,6 +66,17 @@ async function timedFetch(url: string, init: RequestInit = {}, timeoutMs = 12000
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function existingPublicTables(names: string[]) {
+  const result = await pool.query(
+    `SELECT table_name
+     FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name = ANY($1::text[])`,
+    [names]
+  );
+  return new Set(result.rows.map((row) => String(row.table_name || "")));
 }
 
 async function checkUrl(path: string, title: string, area = "אתר הלקוחות"): Promise<MonitorCheck> {
@@ -340,17 +363,21 @@ async function checkDatabase(): Promise<MonitorCheck[]> {
   }
 
   try {
-    await ensureCouponsTable(pool);
+    const requiredTables = ["orders", "users", "coupons", "approval_requests", "contact_requests"];
+    const found = await existingPublicTables(requiredTables);
     const tables = await pool.query(
       `SELECT table_name
        FROM information_schema.tables
        WHERE table_schema = 'public'
        AND table_name = ANY($1::text[])`,
-      [["orders", "users", "coupons", "approval_requests", "contact_requests"]]
+      [requiredTables]
     );
-    const found = new Set(tables.rows.map((row) => row.table_name));
-    for (const table of ["orders", "users", "coupons", "approval_requests", "contact_requests"]) {
-      const exists = found.has(table);
+    const foundNames = new Set([
+      ...Array.from(found),
+      ...tables.rows.map((row) => String(row.table_name || "")),
+    ]);
+    for (const table of requiredTables) {
+      const exists = foundNames.has(table);
       checks.push(
         monitorCheck({
           key: `db:table:${table}`,
@@ -499,7 +526,22 @@ async function checkCouponsAndCredits(): Promise<MonitorCheck[]> {
   const checks: MonitorCheck[] = [];
 
   try {
-    await ensureCouponsTable(pool);
+    const foundTables = await existingPublicTables(["coupons"]);
+    if (!foundTables.has("coupons")) {
+      checks.push(
+        monitorCheck({
+          key: "coupons:inventory",
+          title: "Coupons / credits",
+          area: "Coupons and credits",
+          status: "error",
+          detail: "The coupons table is missing.",
+          recommendedAction: "Create the coupons table through an approved migration before using coupons or credits.",
+          severity: "urgent",
+        })
+      );
+      return checks;
+    }
+
     const stats = await pool.query(`
       SELECT
         COUNT(*)::int AS total,
@@ -544,8 +586,9 @@ async function checkGitHubRepository(repo: string): Promise<MonitorCheck[]> {
     Accept: "application/vnd.github+json",
     "User-Agent": "masoret-site-monitor",
   };
-  if (process.env.GITHUB_MONITOR_TOKEN) {
-    headers.Authorization = `Bearer ${process.env.GITHUB_MONITOR_TOKEN}`;
+  const token = githubMonitorToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
   try {
@@ -623,19 +666,20 @@ async function checkGitHubRepository(repo: string): Promise<MonitorCheck[]> {
 }
 
 async function checkGitHub(): Promise<MonitorCheck[]> {
+  const hasGitHubToken = Boolean(githubMonitorToken());
   const checks: MonitorCheck[] = [
     monitorCheck({
       key: "github:monitor-token",
       title: "הרשאת בדיקת GitHub",
       area: "GitHub וקוד",
-      status: configured("GITHUB_MONITOR_TOKEN") ? "ok" : "warning",
-      detail: configured("GITHUB_MONITOR_TOKEN")
+      status: hasGitHubToken ? "ok" : "warning",
+      detail: hasGitHubToken
         ? "קיים טוקן ייעודי לקריאת מאגרים וריצות."
         : "לא מוגדר GITHUB_MONITOR_TOKEN, לכן בדיקות GitHub מוגבלות למה שציבורי בלבד.",
-      recommendedAction: configured("GITHUB_MONITOR_TOKEN")
+      recommendedAction: hasGitHubToken
         ? undefined
         : "כדי לבדוק את כל הקוד, הריצות והאבטחה במאגרים פרטיים, הגדר GITHUB_MONITOR_TOKEN לקריאה בלבד.",
-      severity: configured("GITHUB_MONITOR_TOKEN") ? undefined : "security",
+      severity: hasGitHubToken ? undefined : "security",
     }),
   ];
   const repoChecks = await Promise.all(GITHUB_REPOS.map((repo) => checkGitHubRepository(repo)));
@@ -782,24 +826,26 @@ function checkExternalAccessCoverage(): MonitorCheck[] {
       key: "security:code-audit",
       title: "סריקת קוד ואבטחה מלאה",
       env: "GITHUB_MONITOR_TOKEN",
+      fallbackEnvs: ["REPAIR_GITHUB_TOKEN", "GITHUB_REPAIR_TOKEN"],
       area: "אבטחת קוד",
       action: "כדי לסרוק את כל המאגרים, workflows וקבצי ההגדרה, נדרש GITHUB_MONITOR_TOKEN לקריאה בלבד.",
     },
   ];
 
-  return required.map((item) =>
-    monitorCheck({
+  return required.map((item) => {
+    const configuredEnv = firstConfigured(item.env, ...(item.fallbackEnvs || []));
+    return monitorCheck({
       key: item.key,
       title: item.title,
       area: item.area,
-      status: configured(item.env) ? "ok" : "warning",
-      detail: configured(item.env)
-        ? `ההרשאה ${item.env} מוגדרת.`
+      status: configuredEnv ? "ok" : "warning",
+      detail: configuredEnv
+        ? `ההרשאה ${configuredEnv} מוגדרת.`
         : `ההרשאה ${item.env} עדיין לא מוגדרת, ולכן הכיסוי בתחום זה חלקי.`,
-      recommendedAction: configured(item.env) ? undefined : item.action,
-      severity: configured(item.env) ? undefined : "security",
-    })
-  );
+      recommendedAction: configuredEnv ? undefined : item.action,
+      severity: configuredEnv ? undefined : "security",
+    });
+  });
 }
 
 function approvalActionForCheck(item: MonitorCheck) {
@@ -836,6 +882,30 @@ async function createApprovalRequests(checks: MonitorCheck[]) {
         fingerprint: `internal-monitor:${item.key}:${item.status}`,
       });
     })
+  );
+}
+
+async function resolveHealthyApprovalRequests(checks: MonitorCheck[]) {
+  const healthyKeys = checks.filter((item) => item.status === "ok").map((item) => item.key);
+  if (!healthyKeys.length) return;
+
+  await pool.query(
+    `
+      UPDATE approval_requests
+      SET status = 'done',
+          decided_by = 'internal-monitor',
+          decided_at = NOW(),
+          updated_at = NOW()
+      WHERE status = 'pending'
+        AND (
+          fingerprint = ANY($1::text[])
+          OR fingerprint = ANY($2::text[])
+        )
+    `,
+    [
+      healthyKeys.map((key) => `internal-monitor:${key}:warning`),
+      healthyKeys.map((key) => `internal-monitor:${key}:error`),
+    ]
   );
 }
 
@@ -879,6 +949,7 @@ export async function GET(request: Request) {
     openaiRepair,
     ...checkExternalAccessCoverage(),
   ];
+  await resolveHealthyApprovalRequests(checks).catch((error) => console.error("monitor approval request cleanup failed", error));
   await createApprovalRequests(checks).catch((error) => console.error("monitor approval request creation failed", error));
 
   return NextResponse.json({
