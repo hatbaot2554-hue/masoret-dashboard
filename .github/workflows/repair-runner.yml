@@ -1,0 +1,53 @@
+name: Repair runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Dashboard repair job id
+        required: true
+      prompt:
+        description: Repair request prompt
+        required: true
+      dashboard_url:
+        description: Dashboard base URL
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: repair-runner-${{ inputs.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Run free repair diagnostics
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REPAIR_JOB_ID: ${{ inputs.job_id }}
+      REPAIR_PROMPT: ${{ inputs.prompt }}
+      DASHBOARD_URL: ${{ inputs.dashboard_url }}
+      AUTOMATION_API_SECRET: ${{ secrets.AUTOMATION_API_SECRET }}
+      GITHUB_REPAIR_TOKEN: ${{ secrets.GITHUB_REPAIR_TOKEN }}
+    steps:
+      - name: Checkout dashboard
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run repair runner
+        run: node scripts/repair-runner.mjs
+
+      - name: Upload repair report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repair-report-${{ inputs.job_id }}
+          path: .repair-workspace/repair-report.txt
+          if-no-files-found: ignore
