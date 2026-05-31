@@ -162,6 +162,153 @@ async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
   return checks;
 }
 
+async function checkDashboardAndOperations(): Promise<MonitorCheck[]> {
+  const checks: MonitorCheck[] = [];
+
+  try {
+    const users = await pool.query(`
+      SELECT COUNT(*)::int AS total
+      FROM users
+      WHERE is_active = TRUE
+    `);
+    const total = Number(users.rows[0]?.total || 0);
+    checks.push(
+      monitorCheck({
+        key: "dashboard:active-users",
+        title: "Dashboard users",
+        area: "Dashboard",
+        status: total > 0 ? "ok" : "error",
+        detail: total > 0 ? `Found ${total} active dashboard users.` : "No active dashboard users were found.",
+        recommendedAction: total > 0 ? undefined : "Create or reactivate at least one admin dashboard user.",
+        severity: total > 0 ? undefined : "urgent",
+      })
+    );
+  } catch (error) {
+    checks.push(
+      monitorCheck({
+        key: "dashboard:active-users",
+        title: "Dashboard users",
+        area: "Dashboard",
+        status: "warning",
+        detail: error instanceof Error ? error.message : "Could not read dashboard users.",
+        recommendedAction: "Check the users table and dashboard DB permissions.",
+        severity: "local",
+      })
+    );
+  }
+
+  try {
+    const approvals = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')::int AS recent
+      FROM approval_requests
+    `);
+    const pending = Number(approvals.rows[0]?.pending || 0);
+    const recent = Number(approvals.rows[0]?.recent || 0);
+    checks.push(
+      monitorCheck({
+        key: "dashboard:approval-queue",
+        title: "Approval queue",
+        area: "Dashboard",
+        status: pending > 10 ? "warning" : "ok",
+        detail: `Found ${pending} pending approval requests and ${recent} created in the last 7 days.`,
+        recommendedAction: pending > 10 ? "Review and clear pending approval requests from the dashboard management tab." : undefined,
+        severity: pending > 10 ? "local" : undefined,
+      })
+    );
+  } catch (error) {
+    checks.push(
+      monitorCheck({
+        key: "dashboard:approval-queue",
+        title: "Approval queue",
+        area: "Dashboard",
+        status: "warning",
+        detail: error instanceof Error ? error.message : "Could not read approval requests.",
+        recommendedAction: "Check the approval_requests table and related migrations.",
+        severity: "local",
+      })
+    );
+  }
+
+  try {
+    const siteControl = await pool.query(`
+      SELECT manual_enabled, manual_until, shabbat_schedules
+      FROM site_control
+      WHERE id = TRUE
+      LIMIT 1
+    `);
+    const row = siteControl.rows[0];
+    if (!row) {
+      checks.push(
+        monitorCheck({
+          key: "site-control:state",
+          title: "Maintenance / Shabbat state",
+          area: "Site health",
+          status: "warning",
+          detail: "The site_control row is missing.",
+          recommendedAction: "Ensure site_control exists and includes the default singleton row.",
+          severity: "local",
+        })
+      );
+    } else {
+      const schedules = Array.isArray(row.shabbat_schedules)
+        ? row.shabbat_schedules
+        : (() => {
+            try {
+              return JSON.parse(String(row.shabbat_schedules || "[]"));
+            } catch {
+              return [];
+            }
+          })();
+      const now = new Date();
+      const activeShabbat = (
+        Array.isArray(schedules)
+          ? (schedules as Array<{ startsAt?: string; starts_at?: string; endsAt?: string; ends_at?: string; name?: string }>)
+          : []
+      ).find((item) => {
+        const start = new Date(item?.startsAt || item?.starts_at || "");
+        const end = new Date(item?.endsAt || item?.ends_at || "");
+        return Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && start <= now && now < end;
+      });
+      const manualUntil = row.manual_until ? new Date(row.manual_until) : null;
+      const manualActive = Boolean(row.manual_enabled && (!manualUntil || manualUntil > now));
+      const mode = activeShabbat ? "shabbat" : manualActive ? "maintenance" : "open";
+      checks.push(
+        monitorCheck({
+          key: "site-control:state",
+          title: "Maintenance / Shabbat state",
+          area: "Site health",
+          status: mode === "open" ? "ok" : "warning",
+          detail:
+            mode === "shabbat"
+              ? `Site is currently in shabbat mode${activeShabbat?.name ? ` (${String(activeShabbat.name)})` : ""}.`
+              : mode === "maintenance"
+                ? "Site is currently in manual maintenance mode."
+                : `No active maintenance window. ${Array.isArray(schedules) ? schedules.length : 0} shabbat windows are configured.`,
+          recommendedAction: mode === "open" ? undefined : "Verify in dashboard management that the active maintenance/shabbat window is intentional.",
+          severity: mode === "open" ? undefined : "local",
+          payload: { mode, schedules: Array.isArray(schedules) ? schedules.length : 0 },
+        })
+      );
+    }
+  } catch (error) {
+    checks.push(
+      monitorCheck({
+        key: "site-control:state",
+        title: "Maintenance / Shabbat state",
+        area: "Site health",
+        status: "warning",
+        detail: error instanceof Error ? error.message : "Could not read site_control state.",
+        recommendedAction: "Check the site_control table and API support.",
+        severity: "local",
+      })
+    );
+  }
+
+  return checks;
+}
+
 async function checkDatabase(): Promise<MonitorCheck[]> {
   const checks: MonitorCheck[] = [];
 
@@ -313,6 +460,15 @@ async function checkCatalog(): Promise<MonitorCheck[]> {
         severity: products.length > 0 ? undefined : "local",
       }),
       monitorCheck({
+        key: "catalog:categories",
+        title: "Product categories",
+        area: "׳¡׳ ׳›׳¨׳•׳",
+        status: categories.size > 0 ? "ok" : "warning",
+        detail: `Found ${categories.size} categories in the synced catalog.`,
+        recommendedAction: categories.size > 0 ? undefined : "Verify the sync job exports category metadata from the source site.",
+        severity: categories.size > 0 ? undefined : "local",
+      }),
+      monitorCheck({
         key: "catalog:variations",
         title: "אפשרויות בחירה במוצרים",
         area: "סנכרון",
@@ -335,6 +491,50 @@ async function checkCatalog(): Promise<MonitorCheck[]> {
       }),
     ];
   }
+}
+
+async function checkCouponsAndCredits(): Promise<MonitorCheck[]> {
+  const checks: MonitorCheck[] = [];
+
+  try {
+    await ensureCouponsTable(pool);
+    const stats = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE status = 'active')::int AS active,
+        COUNT(*) FILTER (WHERE status = 'used')::int AS used,
+        COUNT(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at <= NOW() AND status = 'active')::int AS expired_active,
+        COUNT(*) FILTER (WHERE benefit_type = 'fixed' AND COALESCE(remaining_value, 0) > 0 AND status = 'active')::int AS credits
+      FROM coupons
+    `);
+    const row = stats.rows[0] || {};
+    const expiredActive = Number(row.expired_active || 0);
+    checks.push(
+      monitorCheck({
+        key: "coupons:inventory",
+        title: "Coupons / credits",
+        area: "Coupons and credits",
+        status: expiredActive > 0 ? "warning" : "ok",
+        detail: `Found ${Number(row.total || 0)} coupon rows, ${Number(row.active || 0)} active, ${Number(row.used || 0)} used, and ${Number(row.credits || 0)} active fixed credits.`,
+        recommendedAction: expiredActive > 0 ? "Review active coupons whose expiration date already passed." : undefined,
+        severity: expiredActive > 0 ? "local" : undefined,
+      })
+    );
+  } catch (error) {
+    checks.push(
+      monitorCheck({
+        key: "coupons:inventory",
+        title: "Coupons / credits",
+        area: "Coupons and credits",
+        status: "error",
+        detail: error instanceof Error ? error.message : "Could not inspect coupons.",
+        recommendedAction: "Check the coupons table, migrations, and DB permissions.",
+        severity: "urgent",
+      })
+    );
+  }
+
+  return checks;
 }
 
 async function checkGitHubRepository(repo: string): Promise<MonitorCheck[]> {
@@ -570,7 +770,7 @@ async function createApprovalRequests(checks: MonitorCheck[]) {
         severity: item.severity || (item.status === "error" ? "urgent" : "local"),
         source: "internal-monitor",
         recommendedAction: item.recommendedAction || "בדוק בלשונית בריאות האתר.",
-        actionKey: item.key,
+        actionKey: "approval:review_only",
         payload: item,
         fingerprint: `internal-monitor:${item.key}:${item.status}`,
       })
@@ -595,15 +795,27 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "לא מורשה" }, { status: 401 });
   }
 
-  const [website, database, catalog, github, resend, gemini] = await Promise.all([
+  const [website, dashboardOps, database, catalog, coupons, github, resend, gemini] = await Promise.all([
     checkWebsiteHealth(),
+    checkDashboardAndOperations(),
     checkDatabase(),
     checkCatalog(),
+    checkCouponsAndCredits(),
     checkGitHub(),
     checkResend(),
     checkGemini(),
   ]);
-  const checks = [...website, ...database, ...catalog, ...github, resend, gemini, ...checkExternalAccessCoverage()];
+  const checks = [
+    ...website,
+    ...dashboardOps,
+    ...database,
+    ...catalog,
+    ...coupons,
+    ...github,
+    resend,
+    gemini,
+    ...checkExternalAccessCoverage(),
+  ];
   await createApprovalRequests(checks).catch((error) => console.error("monitor approval request creation failed", error));
 
   return NextResponse.json({
