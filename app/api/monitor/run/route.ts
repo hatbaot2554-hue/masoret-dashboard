@@ -760,21 +760,40 @@ function checkExternalAccessCoverage(): MonitorCheck[] {
   );
 }
 
+function approvalActionForCheck(item: MonitorCheck) {
+  if (item.key === "site-control:state" && item.payload?.mode === "maintenance") {
+    return {
+      actionKey: "site_control:disable_manual",
+      recommendedAction:
+        item.recommendedAction ||
+        "If manual maintenance mode was enabled by mistake, approve this request to disable it safely from the dashboard.",
+      payload: {},
+    };
+  }
+
+  return {
+    actionKey: "approval:review_only",
+    recommendedAction: item.recommendedAction,
+    payload: item,
+  };
+}
+
 async function createApprovalRequests(checks: MonitorCheck[]) {
   const actionable = checks.filter((item) => item.status === "error" || item.status === "warning");
   await Promise.all(
-    actionable.slice(0, 10).map((item) =>
-      createApprovalRequest(pool, {
+    actionable.slice(0, 10).map((item) => {
+      const approvalAction = approvalActionForCheck(item);
+      return createApprovalRequest(pool, {
         title: `${item.title} - ${item.area}`,
         description: item.detail,
         severity: item.severity || (item.status === "error" ? "urgent" : "local"),
         source: "internal-monitor",
         recommendedAction: item.recommendedAction || "בדוק בלשונית בריאות האתר.",
-        actionKey: "approval:review_only",
-        payload: item,
+        actionKey: approvalAction.actionKey,
+        payload: approvalAction.payload,
         fingerprint: `internal-monitor:${item.key}:${item.status}`,
-      })
-    )
+      });
+    })
   );
 }
 
