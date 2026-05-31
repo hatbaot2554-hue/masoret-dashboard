@@ -751,6 +751,7 @@ export default function Dashboard() {
   const [authed, setAuthed] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersError, setOrdersError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Order | null>(null);
   const [search, setSearch] = useState('');
@@ -815,16 +816,26 @@ export default function Dashboard() {
 
   async function fetchOrders() {
     setLoading(true);
+    setOrdersError('');
     try {
-      const res = await fetch('/api/orders', { headers: dashboardAuthHeaders() });
+      const res = await fetch('/api/orders', { headers: dashboardAuthHeaders(), cache: 'no-store' });
       if (res.status === 401) {
         sessionStorage.clear();
         setAuthed(false);
         setCurrentUser(null);
         return;
       }
-      const data = await res.json();
-      setOrders(Array.isArray(data) ? data : []);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || `טעינת ההזמנות נכשלה. סטטוס ${res.status}.`);
+      }
+      const nextOrders = Array.isArray(data) ? data : Array.isArray(data?.orders) ? data.orders : null;
+      if (!nextOrders) {
+        throw new Error('השרת החזיר תשובה לא צפויה במקום רשימת הזמנות.');
+      }
+      setOrders(nextOrders);
+    } catch (error) {
+      setOrdersError(error instanceof Error ? error.message : 'לא ניתן לטעון הזמנות כרגע.');
     } finally {
       setLoading(false);
     }
@@ -2291,6 +2302,13 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {ordersError && (
+        <div className="orders-load-error">
+          {ordersError}
+          <button type="button" onClick={fetchOrders}>נסה שוב</button>
+        </div>
+      )}
+
       <nav className="status-links">
         <button className={filterStatus === 'all' ? 'active' : ''} type="button" onClick={() => setFilterStatus('all')}>
           הכל ({statusCounts.all || 0})
@@ -2365,6 +2383,15 @@ export default function Dashboard() {
           <tbody>
             {loading ? (
               <tr><td colSpan={9} className="empty-row">טוען הזמנות...</td></tr>
+            ) : orders.length > 0 && filtered.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="empty-row">
+                  יש {orders.length} הזמנות במערכת, אבל הסינון או החיפוש הנוכחי מסתיר אותן.
+                  <button type="button" className="empty-row-action" onClick={() => { setSearch(''); setFilterStatus('all'); }}>
+                    נקה סינון והצג הכל
+                  </button>
+                </td>
+              </tr>
             ) : filtered.length === 0 ? (
               <tr><td colSpan={9} className="empty-row">אין הזמנות להצגה</td></tr>
             ) : (
