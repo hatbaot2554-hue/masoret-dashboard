@@ -55,7 +55,7 @@ async function runCheck(name, command, cwd, timeout = 180000) {
 }
 
 function cloneUrl(repo) {
-  const token = process.env.GITHUB_REPAIR_TOKEN || process.env.GITHUB_TOKEN || '';
+  const token = process.env.REPAIR_GITHUB_TOKEN || process.env.GITHUB_REPAIR_TOKEN || process.env.GITHUB_TOKEN || '';
   if (!token) return `https://github.com/hatbaot2554-hue/${repo}.git`;
   return `https://x-access-token:${token}@github.com/hatbaot2554-hue/${repo}.git`;
 }
@@ -299,7 +299,7 @@ async function askOpenAiPatch(failedItem) {
 }
 
 async function createPullRequest(repoFull, branch, title, body) {
-  const token = process.env.GITHUB_REPAIR_TOKEN || process.env.GITHUB_TOKEN || '';
+  const token = process.env.REPAIR_GITHUB_TOKEN || process.env.GITHUB_REPAIR_TOKEN || process.env.GITHUB_TOKEN || '';
   if (!token) return '';
   try {
     const response = await fetch(`https://api.github.com/repos/${repoFull}/pulls`, {
