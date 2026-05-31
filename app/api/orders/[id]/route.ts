@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { createDbPool } from '../../../lib/db';
+import { ensureOrderEmailColumns, sendExternalOrderReadyEmail } from '../../../lib/orderEmails';
 
 const pool = createDbPool();
 
@@ -48,6 +49,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const values: (string | boolean)[] = []
 
     await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS admin_notes JSONB DEFAULT '[]'::jsonb`).catch(() => {})
+    await ensureOrderEmailColumns(pool).catch(() => {})
 
     if (auto_submitted !== undefined) {
       values.push(auto_submitted)
@@ -82,6 +84,12 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
     if (result.rows.length === 0) {
       return NextResponse.json({ error: 'הזמנה לא נמצאה' }, { status: 404 })
+    }
+
+    if (result.rows[0]?.external_order_id) {
+      await sendExternalOrderReadyEmail(pool, result.rows[0]).catch((error) => {
+        console.error('External order email failed', error)
+      })
     }
 
     return NextResponse.json(result.rows[0])
