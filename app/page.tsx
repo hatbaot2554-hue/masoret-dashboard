@@ -171,6 +171,13 @@ type RepairJobLog = {
   text: string;
 };
 
+type RepairConversationMessage = {
+  at: string;
+  role: 'user' | 'assistant';
+  text: string;
+  images?: { name: string; dataUrl: string }[];
+};
+
 type RepairJob = {
   id: number;
   title: string;
@@ -435,6 +442,28 @@ function approvalBlockerText(request: ApprovalRequest) {
     return 'זו בדיקת בריאות שמצריכה טיפול או הגדרה, אבל היא לא משימת תיקון קוד. לכן אישור כאן לא יגרום ל-AI לערוך קבצים.';
   }
   return '';
+}
+
+function approvalAssistantContext(request: ApprovalRequest) {
+  const payload = parseApprovalPayload(request.payload);
+  const nestedPayload = parseApprovalPayload(payload.payload as ApprovalRequest['payload']);
+  return {
+    id: request.id,
+    title: request.title,
+    description: request.description,
+    severity: request.severity,
+    source: request.source,
+    recommendedAction: request.recommended_action,
+    actionKey: request.action_key,
+    secret: missingExternalSecret(request),
+    setupSteps: approvalSetupSteps(request),
+    payload: {
+      key: payload.key || nestedPayload.key,
+      detail: payload.detail || nestedPayload.detail,
+      status: payload.status || nestedPayload.status,
+      area: payload.area || nestedPayload.area,
+    },
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -830,6 +859,10 @@ export default function Dashboard() {
   const [approvalError, setApprovalError] = useState('');
   const [approvalSaving, setApprovalSaving] = useState<number | null>(null);
   const [approvalProgress, setApprovalProgress] = useState<Record<number, ApprovalProgress>>({});
+  const [approvalChats, setApprovalChats] = useState<Record<number, RepairConversationMessage[]>>({});
+  const [approvalChatDrafts, setApprovalChatDrafts] = useState<Record<number, string>>({});
+  const [approvalChatImages, setApprovalChatImages] = useState<Record<number, { name: string; dataUrl: string; type?: string }[]>>({});
+  const [approvalChatLoading, setApprovalChatLoading] = useState<number | null>(null);
   const [repairJobs, setRepairJobs] = useState<RepairJob[]>([]);
   const [repairPrompt, setRepairPrompt] = useState('');
   const [repairError, setRepairError] = useState('');
@@ -843,11 +876,19 @@ export default function Dashboard() {
     const token = sessionStorage.getItem('dashboard_token');
     const user = sessionStorage.getItem('dashboard_user');
     const savedProgress = sessionStorage.getItem('approval_progress');
+    const savedChats = sessionStorage.getItem('approval_chats');
     if (savedProgress) {
       try {
         setApprovalProgress(JSON.parse(savedProgress));
       } catch {
         sessionStorage.removeItem('approval_progress');
+      }
+    }
+    if (savedChats) {
+      try {
+        setApprovalChats(JSON.parse(savedChats));
+      } catch {
+        sessionStorage.removeItem('approval_chats');
       }
     }
     if (token && user) {
@@ -865,6 +906,12 @@ export default function Dashboard() {
       sessionStorage.setItem('approval_progress', JSON.stringify(approvalProgress));
     }
   }, [approvalProgress]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('approval_chats', JSON.stringify(approvalChats));
+    }
+  }, [approvalChats]);
 
   async function fetchOrders() {
     setLoading(true);
@@ -1196,6 +1243,75 @@ export default function Dashboard() {
       if (exists) return items.map((item) => (item.id === job.id ? job : item));
       return [job, ...items];
     });
+  }
+
+  function appendApprovalChat(id: number, message: RepairConversationMessage) {
+    setApprovalChats((current) => ({
+      ...current,
+      [id]: [...(current[id] || []), message],
+    }));
+  }
+
+  function readImageFile(file: File): Promise<{ name: string; type?: string; dataUrl: string }> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ name: file.name, type: file.type, dataUrl: String(reader.result || '') });
+      reader.onerror = () => reject(new Error('לא ניתן לקרוא את התמונה.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleApprovalImages(id: number, files: FileList | null) {
+    if (!files?.length) return;
+    const images = await Promise.all(Array.from(files).slice(0, 3).map(readImageFile));
+    setApprovalChatImages((current) => ({
+      ...current,
+      [id]: [...(current[id] || []), ...images].slice(0, 3),
+    }));
+  }
+
+  async function askApprovalAssistant(request: ApprovalRequest) {
+    const id = request.id;
+    const question = String(approvalChatDrafts[id] || '').trim();
+    const images = approvalChatImages[id] || [];
+    if (!question && images.length === 0) return;
+
+    const userMessage: RepairConversationMessage = {
+      at: new Date().toISOString(),
+      role: 'user',
+      text: question || 'צירפתי תמונה. תסביר לי מה לעשות לפי מה שרואים בה.',
+      images,
+    };
+    appendApprovalChat(id, userMessage);
+    setApprovalChatDrafts((current) => ({ ...current, [id]: '' }));
+    setApprovalChatImages((current) => ({ ...current, [id]: [] }));
+    setApprovalChatLoading(id);
+
+    try {
+      const res = await fetch('/api/repair-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
+        body: JSON.stringify({
+          question: userMessage.text,
+          images,
+          context: approvalAssistantContext(request),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      appendApprovalChat(id, {
+        at: new Date().toISOString(),
+        role: 'assistant',
+        text: res.ok ? data?.answer || 'לא התקבלה תשובה ברורה.' : data?.error || 'לא ניתן לקבל תשובה כרגע.',
+      });
+    } catch (error) {
+      appendApprovalChat(id, {
+        at: new Date().toISOString(),
+        role: 'assistant',
+        text: error instanceof Error ? error.message : 'לא ניתן לקבל תשובה כרגע.',
+      });
+    } finally {
+      setApprovalChatLoading(null);
+    }
   }
 
   async function updateRepairJobProgress(
@@ -1652,6 +1768,8 @@ export default function Dashboard() {
                         const progress = approvalProgress[request.id];
                         const blockerText = approvalBlockerText(request);
                         const setupSteps = approvalSetupSteps(request);
+                        const chatMessages = approvalChats[request.id] || [];
+                        const chatImages = approvalChatImages[request.id] || [];
                         const canRunAutomatically = approvalCanRunAutomatically(request);
                         const visibleProgress = linkedRepairJob
                           ? { status: linkedRepairJob.status, logs: linkedRepairLogs, title: repairStatusLabel(linkedRepairJob.status), taskId: linkedRepairJob.id }
@@ -1726,6 +1844,57 @@ export default function Dashboard() {
                                 {visibleProgress.status === 'failed' && <div className="repair-blocked-message">התיקון נכשל בבדיקה. הלוג למעלה מציג את מקור התקלה האחרון שנמצא.</div>}
                               </div>
                             )}
+                            <div className="approval-assistant-panel">
+                              <div className="approval-assistant-head">
+                                <strong>שיחה עם מערכת התיקון</strong>
+                                <span>אפשר לשאול על הבעיה, לבקש הסבר שלב-שלב, או לצרף צילום מסך.</span>
+                              </div>
+                              <div className="approval-chat-log" aria-live="polite">
+                                {chatMessages.length === 0 ? (
+                                  <small>עדיין אין שיחה על התקלה הזו. כתוב שאלה או צרף תמונה כדי לקבל הנחיה.</small>
+                                ) : chatMessages.map((message, index) => (
+                                  <div className={`approval-chat-message ${message.role}`} key={`${request.id}-chat-${index}`}>
+                                    <span>{message.role === 'user' ? 'אתה' : 'מערכת התיקון'} · {new Date(message.at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</span>
+                                    <p>{message.text}</p>
+                                    {message.images && message.images.length > 0 && (
+                                      <div className="approval-chat-images">
+                                        {message.images.map((image, imageIndex) => (
+                                          <img src={image.dataUrl} alt={image.name || `תמונה ${imageIndex + 1}`} key={`${request.id}-chat-image-${index}-${imageIndex}`} />
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                                {approvalChatLoading === request.id && <small>המערכת בודקת את ההקשר ועונה...</small>}
+                              </div>
+                              {chatImages.length > 0 && (
+                                <div className="approval-chat-images pending">
+                                  {chatImages.map((image, index) => (
+                                    <img src={image.dataUrl} alt={image.name || `תמונה ${index + 1}`} key={`${request.id}-pending-image-${index}`} />
+                                  ))}
+                                </div>
+                              )}
+                              <textarea
+                                value={approvalChatDrafts[request.id] || ''}
+                                onChange={(event) => setApprovalChatDrafts((current) => ({ ...current, [request.id]: event.target.value }))}
+                                placeholder="שאל כאן משהו על התקלה הזו..."
+                                rows={2}
+                              />
+                              <div className="approval-chat-actions">
+                                <label>
+                                  צרף תמונה
+                                  <input
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/webp"
+                                    multiple
+                                    onChange={(event) => handleApprovalImages(request.id, event.target.files)}
+                                  />
+                                </label>
+                                <button type="button" onClick={() => askApprovalAssistant(request)} disabled={approvalChatLoading === request.id}>
+                                  {approvalChatLoading === request.id ? 'שולח...' : 'שלח שאלה'}
+                                </button>
+                              </div>
+                            </div>
                           </article>
                         );
                       })}
