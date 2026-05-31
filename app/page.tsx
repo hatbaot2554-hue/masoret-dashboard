@@ -370,6 +370,7 @@ function missingExternalSecret(request: ApprovalRequest) {
   const text = approvalTextForDiagnosis(request);
   if (text.includes('VERCEL_MONITOR_TOKEN')) return 'VERCEL_MONITOR_TOKEN';
   if (text.includes('GITHUB_MONITOR_TOKEN')) return 'GITHUB_MONITOR_TOKEN';
+  if (text.includes('REPAIR_GITHUB_TOKEN')) return 'REPAIR_GITHUB_TOKEN';
   if (text.includes('AIVEN_MONITOR_TOKEN')) return 'AIVEN_MONITOR_TOKEN';
   if (text.includes('RESEND_API_KEY')) return 'RESEND_API_KEY';
   if (text.includes('GEMINI_API_KEY')) return 'GEMINI_API_KEY';
