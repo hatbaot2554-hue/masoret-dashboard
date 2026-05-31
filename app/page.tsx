@@ -160,7 +160,26 @@ type CouponRecord = {
   status: string;
   source_order_id?: string | null;
   note?: string | null;
+  expires_at?: string | null;
   created_at: string;
+};
+
+type RepairJobLog = {
+  at: string;
+  level: 'info' | 'success' | 'warning' | 'error';
+  text: string;
+};
+
+type RepairJob = {
+  id: number;
+  title: string;
+  prompt: string;
+  status: string;
+  requested_by?: string | null;
+  logs: RepairJobLog[] | string;
+  result?: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type AdminView = 'dashboard' | 'orders' | 'products' | 'customers' | 'coupons' | 'reports' | 'graphs' | 'settings' | 'health' | 'management';
@@ -227,6 +246,20 @@ function formatOrderId(id: string) {
 
 function formatMoney(value: number | string | undefined) {
   return `₪${Number(value || 0).toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function dateTimeLocalToIso(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : value;
+}
+
+function isoToDateTimeLocal(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return String(value).slice(0, 16);
+  const offsetMs = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
 function parseItems(items: Order['items']): OrderItem[] {
@@ -566,8 +599,12 @@ export default function Dashboard() {
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
   const [approvalError, setApprovalError] = useState('');
   const [approvalSaving, setApprovalSaving] = useState<number | null>(null);
+  const [repairJobs, setRepairJobs] = useState<RepairJob[]>([]);
+  const [repairPrompt, setRepairPrompt] = useState('');
+  const [repairError, setRepairError] = useState('');
+  const [repairSaving, setRepairSaving] = useState(false);
   const [coupons, setCoupons] = useState<CouponRecord[]>([]);
-  const [couponDraft, setCouponDraft] = useState({ ownerName: '', ownerEmail: '', ownerPhone: '', benefitType: 'percent', benefitValue: '10', note: '' });
+  const [couponDraft, setCouponDraft] = useState({ code: '', ownerName: '', ownerEmail: '', ownerPhone: '', benefitType: 'percent', benefitValue: '10', usageLimit: '1', expiresAt: '', note: '' });
   const [couponError, setCouponError] = useState('');
   const [couponSaving, setCouponSaving] = useState(false);
 
@@ -621,6 +658,14 @@ export default function Dashboard() {
         setCoupons(Array.isArray(data?.coupons) ? data.coupons : []);
       })
       .catch((error) => setCouponError(error.message || 'לא ניתן לטעון קופונים.'));
+    setRepairError('');
+    fetch('/api/repair-jobs', { headers: dashboardAuthHeaders(), cache: 'no-store' })
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || 'לא ניתן לטעון תהליכי תיקון.');
+        setRepairJobs(Array.isArray(data?.jobs) ? data.jobs : []);
+      })
+      .catch((error) => setRepairError(error.message || 'לא ניתן לטעון תהליכי תיקון.'));
   }, [activeView, authed, canManageSystem]);
 
   useEffect(() => {
@@ -651,7 +696,7 @@ export default function Dashboard() {
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || 'לא ניתן לטעון את מצב האתר.');
         setSiteControl(data);
-        setManualUntilDraft(data?.manualUntil ? String(data.manualUntil).slice(0, 16) : '');
+        setManualUntilDraft(isoToDateTimeLocal(data?.manualUntil));
       })
       .catch((error) => setSiteControlError(error.message || 'לא ניתן לטעון את מצב האתר.'));
     setApprovalError('');
@@ -662,6 +707,18 @@ export default function Dashboard() {
         setApprovalRequests(Array.isArray(data?.requests) ? data.requests : []);
       })
       .catch((error) => setApprovalError(error.message || 'לא ניתן לטעון בקשות אישור.'));
+  }, [activeView, authed, canManageSystem]);
+
+  useEffect(() => {
+    if (!authed || (activeView !== 'management' && activeView !== 'health') || !canManageSystem) return;
+    setRepairError('');
+    fetch('/api/repair-jobs', { headers: dashboardAuthHeaders(), cache: 'no-store' })
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || 'לא ניתן לטעון תהליכי תיקון.');
+        setRepairJobs(Array.isArray(data?.jobs) ? data.jobs : []);
+      })
+      .catch((error) => setRepairError(error.message || 'לא ניתן לטעון תהליכי תיקון.'));
   }, [activeView, authed, canManageSystem]);
 
   useEffect(() => {
@@ -842,7 +899,7 @@ export default function Dashboard() {
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'לא ניתן לשמור את מצב האתר.');
       setSiteControl(data);
-      setManualUntilDraft(data?.manualUntil ? String(data.manualUntil).slice(0, 16) : '');
+      setManualUntilDraft(isoToDateTimeLocal(data?.manualUntil));
     } catch (error) {
       setSiteControlError(error instanceof Error ? error.message : 'לא ניתן לשמור את מצב האתר.');
     } finally {
@@ -855,8 +912,8 @@ export default function Dashboard() {
     const nextSchedule: ShabbatWindow = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       name: shabbatDraft.name.trim() || 'שבת',
-      startsAt: shabbatDraft.startsAt,
-      endsAt: shabbatDraft.endsAt,
+      startsAt: dateTimeLocalToIso(shabbatDraft.startsAt) || shabbatDraft.startsAt,
+      endsAt: dateTimeLocalToIso(shabbatDraft.endsAt) || shabbatDraft.endsAt,
     };
     saveSiteControl({ shabbatSchedules: [...siteControl.shabbatSchedules, nextSchedule] });
     setShabbatDraft({ name: '', startsAt: '', endsAt: '' });
@@ -879,10 +936,55 @@ export default function Dashboard() {
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'לא ניתן לעדכן את בקשת האישור.');
       setApprovalRequests((items) => items.map((item) => (item.id === id ? data.request : item)));
+      const actionKey = String(data?.request?.action_key || '');
+      if (actionKey.startsWith('repair_job:')) {
+        const repairId = Number(actionKey.split(':')[1]);
+        const repairRes = await fetch('/api/repair-jobs', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
+          body: JSON.stringify({
+            id: repairId,
+            status: status === 'approved' ? 'approved_for_work' : 'rejected',
+            level: status === 'approved' ? 'success' : 'warning',
+            message: status === 'approved'
+              ? 'המשימה אושרה. אפשר להעביר אותה לתיקון מבוקר עם הרשאות מתאימות.'
+              : 'המשימה נדחתה ולא תבוצע.',
+          }),
+        });
+        const repairData = await repairRes.json().catch(() => null);
+        if (repairRes.ok && repairData?.job) {
+          setRepairJobs((items) => items.map((item) => (item.id === repairData.job.id ? repairData.job : item)));
+        }
+      }
     } catch (error) {
       setApprovalError(error instanceof Error ? error.message : 'לא ניתן לעדכן את בקשת האישור.');
     } finally {
       setApprovalSaving(null);
+    }
+  }
+
+  async function createRepairJob(prompt?: string) {
+    const text = String(prompt || repairPrompt).trim();
+    if (!text) return;
+    setRepairSaving(true);
+    setRepairError('');
+    try {
+      const res = await fetch('/api/repair-jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
+        body: JSON.stringify({
+          prompt: text,
+          requestedBy: currentUser?.username || 'admin',
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || 'לא ניתן לפתוח תהליך תיקון.');
+      setRepairPrompt('');
+      setRepairJobs((prev) => [data.job, ...prev]);
+    } catch (error) {
+      setRepairError(error instanceof Error ? error.message : 'לא ניתן לפתוח תהליך תיקון.');
+    } finally {
+      setRepairSaving(false);
     }
   }
 
@@ -899,13 +1001,16 @@ export default function Dashboard() {
           ownerPhone: couponDraft.ownerPhone,
           benefitType: couponDraft.benefitType,
           benefitValue: Number(couponDraft.benefitValue || 0),
+          usageLimit: Number(couponDraft.usageLimit || 1),
+          expiresAt: couponDraft.expiresAt || null,
+          code: couponDraft.code,
           note: couponDraft.note,
         }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'לא ניתן ליצור קופון.');
       setCoupons((items) => [data.coupon, ...items]);
-      setCouponDraft({ ownerName: '', ownerEmail: '', ownerPhone: '', benefitType: 'percent', benefitValue: '10', note: '' });
+      setCouponDraft({ code: '', ownerName: '', ownerEmail: '', ownerPhone: '', benefitType: 'percent', benefitValue: '10', usageLimit: '1', expiresAt: '', note: '' });
     } catch (error) {
       setCouponError(error instanceof Error ? error.message : 'לא ניתן ליצור קופון.');
     } finally {
@@ -1104,6 +1209,7 @@ export default function Dashboard() {
               <p>כאן אפשר ליצור זיכוי ללקוח: קוד קופון בן 5 תווים, או זיכוי שמזוהה לפי מייל/טלפון של הלקוח.</p>
               {couponError && <div className="login-error">{couponError}</div>}
               <div className="coupon-create-grid">
+                <input placeholder="קוד ידני או ריק לאוטומטי" value={couponDraft.code} onChange={(event) => setCouponDraft({ ...couponDraft, code: event.target.value.toUpperCase() })} />
                 <input placeholder="שם לקוח" value={couponDraft.ownerName} onChange={(event) => setCouponDraft({ ...couponDraft, ownerName: event.target.value })} />
                 <input placeholder="מייל לקוח" value={couponDraft.ownerEmail} onChange={(event) => setCouponDraft({ ...couponDraft, ownerEmail: event.target.value })} />
                 <input placeholder="טלפון לקוח" value={couponDraft.ownerPhone} onChange={(event) => setCouponDraft({ ...couponDraft, ownerPhone: event.target.value })} />
@@ -1112,23 +1218,27 @@ export default function Dashboard() {
                   <option value="fixed">סכום זיכוי</option>
                 </select>
                 <input type="number" min="0" placeholder="ערך" value={couponDraft.benefitValue} onChange={(event) => setCouponDraft({ ...couponDraft, benefitValue: event.target.value })} />
+                <input type="number" min="1" placeholder="מספר שימושים" value={couponDraft.usageLimit} onChange={(event) => setCouponDraft({ ...couponDraft, usageLimit: event.target.value })} />
+                <input type="datetime-local" value={couponDraft.expiresAt} onChange={(event) => setCouponDraft({ ...couponDraft, expiresAt: event.target.value })} />
                 <input placeholder="הערה" value={couponDraft.note} onChange={(event) => setCouponDraft({ ...couponDraft, note: event.target.value })} />
                 <button type="button" onClick={createCoupon} disabled={couponSaving}>צור קופון</button>
               </div>
 
               <table className="simple-admin-table">
                 <thead>
-                  <tr><th>קוד</th><th>לקוח</th><th>הטבה</th><th>סטטוס</th><th>נוצר</th></tr>
+                  <tr><th>קוד</th><th>לקוח</th><th>הטבה</th><th>שימושים</th><th>תוקף</th><th>סטטוס</th><th>נוצר</th></tr>
                 </thead>
                 <tbody>
                   {coupons.length === 0 ? (
-                    <tr><td colSpan={5}>אין קופונים להצגה.</td></tr>
+                    <tr><td colSpan={7}>אין קופונים להצגה.</td></tr>
                   ) : coupons.map((coupon) => (
                     <tr key={coupon.id}>
                       <td><strong>{coupon.code}</strong></td>
                       <td>{coupon.owner_name || coupon.owner_email || coupon.owner_phone || '-'}</td>
                       <td>{coupon.benefit_type === 'fixed' ? `₪${coupon.benefit_value}` : `${coupon.benefit_value}%`}</td>
-                      <td>{coupon.status} ({coupon.used_count}/{coupon.usage_limit})</td>
+                      <td>{coupon.used_count}/{coupon.usage_limit}</td>
+                      <td>{coupon.expires_at ? new Date(coupon.expires_at).toLocaleString('he-IL') : 'ללא'}</td>
+                      <td>{coupon.status}</td>
                       <td>{new Date(coupon.created_at).toLocaleString('he-IL')}</td>
                     </tr>
                   ))}
@@ -1179,6 +1289,47 @@ export default function Dashboard() {
                           </div>
                         </article>
                       ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="management-subsection repair-center">
+                  <h4>מרכז תיקונים ופיתוח חי</h4>
+                  <p>כאן אפשר לבקש בדיקה, תיקון, אוטומציה או פיצ׳ר חדש. משימות שמצריכות שינוי קוד או גישה חיצונית ייפתחו כאישור מסודר, וכל שלב יירשם כאן בלוג חי.</p>
+                  {repairError && <div className="login-error">{repairError}</div>}
+                  <textarea
+                    value={repairPrompt}
+                    onChange={(event) => setRepairPrompt(event.target.value)}
+                    placeholder="לדוגמה: בדוק למה מצב שבת לא מופעל, הוסף כפתור חדש, או הרץ בדיקה מקיפה על האוטומציות"
+                    rows={4}
+                  />
+                  <div className="repair-actions">
+                    <button type="button" disabled={repairSaving || !repairPrompt.trim()} onClick={() => createRepairJob()}>פתח תהליך תיקון</button>
+                    <button type="button" disabled={repairSaving} onClick={() => createRepairJob('הרץ בדיקה מקיפה על האתר, לוח הבקרה, מסד הנתונים, האוטומציות, המיילים והגדרות האבטחה. דווח על כל בעיה ופתח בקשות אישור לכל תיקון מסוכן.')}>הרץ בדיקה מקיפה</button>
+                  </div>
+                  {repairJobs.length === 0 ? (
+                    <p>אין עדיין תהליכי תיקון פתוחים.</p>
+                  ) : (
+                    <div className="repair-job-list">
+                      {repairJobs.slice(0, 8).map((job) => {
+                        const logs = Array.isArray(job.logs) ? job.logs : [];
+                        return (
+                          <article className={`repair-job ${job.status}`} key={job.id}>
+                            <div className="repair-job-head">
+                              <strong>{job.title}</strong>
+                              <span>{job.status === 'needs_approval' ? 'ממתין לאישור' : job.status}</span>
+                            </div>
+                            <p>{job.prompt}</p>
+                            <div className="repair-log">
+                              {logs.slice(0, 5).map((entry, index) => (
+                                <small className={entry.level} key={`${job.id}-${index}`}>
+                                  {new Date(entry.at).toLocaleString('he-IL')} · {entry.text}
+                                </small>
+                              ))}
+                            </div>
+                          </article>
+                        );
+                      })}
                     </div>
                   )}
                 </section>
@@ -1303,7 +1454,7 @@ export default function Dashboard() {
                           כיבוי עד תאריך ושעה
                           <input type="datetime-local" value={manualUntilDraft} onChange={(event) => setManualUntilDraft(event.target.value)} />
                         </label>
-                        <button type="button" disabled={siteControlSaving} onClick={() => saveSiteControl({ manualEnabled: true, manualUntil: manualUntilDraft || null })}>השבת אתר עכשיו</button>
+                        <button type="button" disabled={siteControlSaving} onClick={() => saveSiteControl({ manualEnabled: true, manualUntil: dateTimeLocalToIso(manualUntilDraft) })}>השבת אתר עכשיו</button>
                         <button type="button" disabled={siteControlSaving} onClick={() => saveSiteControl({ manualEnabled: false, manualUntil: null })}>הפעל אתר עכשיו</button>
                       </div>
                       <div className="shabbat-control">
