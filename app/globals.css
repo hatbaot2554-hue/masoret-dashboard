@@ -597,6 +597,23 @@ button:disabled {
   font-weight: 700;
 }
 
+.repair-job.running .repair-job-head span,
+.repair-job.queued .repair-job-head span {
+  background: #e7f0ff;
+  color: #0b4a8f;
+}
+
+.repair-job.completed .repair-job-head span {
+  background: #e7f7ee;
+  color: #146c43;
+}
+
+.repair-job.blocked .repair-job-head span,
+.repair-job.failed .repair-job-head span {
+  background: #fde8e8;
+  color: #b42318;
+}
+
 .repair-log {
   display: grid;
   gap: 6px;
@@ -634,12 +651,17 @@ button:disabled {
   border-color: #7aa7db;
 }
 
+.approval-repair-panel.queued {
+  border-color: #9bbce4;
+}
+
 .approval-repair-panel.completed {
   border-color: #76c893;
   background: #f5fff8;
 }
 
 .approval-repair-panel.failed,
+.approval-repair-panel.blocked,
 .approval-repair-panel.rejected {
   border-color: #f0a8a8;
   background: #fff8f8;
@@ -712,6 +734,16 @@ button:disabled {
   border: 1px solid #9bd6b4;
   border-radius: 8px;
   color: #146c43;
+  font-weight: 900;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.repair-blocked-message {
+  background: #fff1f1;
+  border: 1px solid #f0a8a8;
+  border-radius: 8px;
+  color: #b42318;
   font-weight: 900;
   margin-top: 12px;
   padding: 10px 12px;
