@@ -826,6 +826,22 @@ button:disabled {
   color: #092744;
 }
 
+.approval-card-actions button:disabled {
+  cursor: not-allowed;
+}
+
+.approval-blocker-note {
+  background: #fff7ed;
+  border: 1px solid #f3c98b;
+  border-radius: 8px;
+  color: #7a4a00;
+  font-size: 13px;
+  font-weight: 800;
+  grid-column: 1 / -1;
+  line-height: 1.7;
+  padding: 10px 12px;
+}
+
 .approval-status {
   border-radius: 999px;
   font-size: 12px;
