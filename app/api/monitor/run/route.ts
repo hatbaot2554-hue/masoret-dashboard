@@ -58,6 +58,15 @@ function monitorCheck(input: MonitorCheck): MonitorCheck {
   return input;
 }
 
+function dedupeMonitorChecks(checks: MonitorCheck[]) {
+  const seen = new Set<string>();
+  return checks.filter((item) => {
+    if (seen.has(item.key)) return false;
+    seen.add(item.key);
+    return true;
+  });
+}
+
 async function timedFetch(url: string, init: RequestInit = {}, timeoutMs = 12000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -184,7 +193,7 @@ async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
     );
   }
 
-  return checks;
+  return dedupeMonitorChecks(checks);
 }
 
 async function checkDashboardAndOperations(): Promise<MonitorCheck[]> {
@@ -887,7 +896,22 @@ async function createApprovalRequests(checks: MonitorCheck[]) {
 
 async function resolveHealthyApprovalRequests(checks: MonitorCheck[]) {
   const healthyKeys = checks.filter((item) => item.status === "ok").map((item) => item.key);
-  if (!healthyKeys.length) return;
+  const legacyHealthyFingerprints = new Set<string>();
+
+  if (healthyKeys.includes("url:/api/orders?account=0500000000")) {
+    legacyHealthyFingerprints.add("system-health:CUSTOMER_ORDERS_API:error");
+    legacyHealthyFingerprints.add("system-health:CUSTOMER_ORDERS_API:warning");
+  }
+  if (healthyKeys.includes("url:/cart")) {
+    legacyHealthyFingerprints.add("internal-monitor:url:/checkout:warning");
+    legacyHealthyFingerprints.add("internal-monitor:url:/checkout:error");
+  }
+  if (healthyKeys.includes("ai:openai-repair")) {
+    legacyHealthyFingerprints.add("system-health:OPENAI_API_KEY:missing");
+    legacyHealthyFingerprints.add("system-health:OPENAI_API_KEY:warning");
+  }
+
+  if (!healthyKeys.length && !legacyHealthyFingerprints.size) return;
 
   await pool.query(
     `
@@ -900,11 +924,13 @@ async function resolveHealthyApprovalRequests(checks: MonitorCheck[]) {
         AND (
           fingerprint = ANY($1::text[])
           OR fingerprint = ANY($2::text[])
+          OR fingerprint = ANY($3::text[])
         )
     `,
     [
       healthyKeys.map((key) => `internal-monitor:${key}:warning`),
       healthyKeys.map((key) => `internal-monitor:${key}:error`),
+      Array.from(legacyHealthyFingerprints),
     ]
   );
 }
