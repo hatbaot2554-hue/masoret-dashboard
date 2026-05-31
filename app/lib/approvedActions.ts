@@ -31,6 +31,7 @@ function monitorPermissionMessage(payload: Record<string, unknown>) {
     text.includes("AIVEN_MONITOR_TOKEN") ? "AIVEN_MONITOR_TOKEN" :
     text.includes("RESEND_API_KEY") ? "RESEND_API_KEY" :
     text.includes("GEMINI_API_KEY") ? "GEMINI_API_KEY" :
+    text.includes("OPENAI_API_KEY") ? "OPENAI_API_KEY" :
     "";
 
   if (!envName) return "";
