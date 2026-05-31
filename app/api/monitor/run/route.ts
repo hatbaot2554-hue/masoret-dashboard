@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createDbPool } from "../../../lib/db";
 import { createApprovalRequest } from "../../../lib/approvalRequests";
 import { sharedSecretAllowed } from "../../../lib/security";
@@ -90,7 +90,7 @@ async function existingPublicTables(names: string[]) {
   return new Set(result.rows.map((row) => String(row.table_name || "")));
 }
 
-async function checkUrl(path: string, title: string, area = "אתר הלקוחות"): Promise<MonitorCheck> {
+async function checkUrl(path: string, title: string, area = "׳׳×׳¨ ׳”׳׳§׳•׳—׳•׳×"): Promise<MonitorCheck> {
   const url = `${WEBSITE_URL}${path}`;
   try {
     const response = await timedFetch(url);
@@ -103,8 +103,8 @@ async function checkUrl(path: string, title: string, area = "אתר הלקוחו
         status: "ok",
         detail:
           response.status >= 300
-            ? `הכתובת זמינה ומחזירה הפניה תקינה (${response.status}).`
-            : `הכתובת זמינה (${response.status}).`,
+            ? `׳”׳›׳×׳•׳‘׳× ׳–׳׳™׳ ׳” ׳•׳׳—׳–׳™׳¨׳” ׳”׳₪׳ ׳™׳” ׳×׳§׳™׳ ׳” (${response.status}).`
+            : `׳”׳›׳×׳•׳‘׳× ׳–׳׳™׳ ׳” (${response.status}).`,
         payload: { path, status: response.status },
       });
     }
@@ -114,8 +114,8 @@ async function checkUrl(path: string, title: string, area = "אתר הלקוחו
       title,
       area,
       status: response.status >= 500 ? "error" : "warning",
-      detail: `${url} החזיר שגיאה ${response.status}.`,
-      recommendedAction: "בדוק את הפריסה האחרונה ואת כתובת העמוד באתר.",
+      detail: `${url} ׳”׳—׳–׳™׳¨ ׳©׳’׳™׳׳” ${response.status}.`,
+      recommendedAction: "׳‘׳“׳•׳§ ׳׳× ׳”׳₪׳¨׳™׳¡׳” ׳”׳׳—׳¨׳•׳ ׳” ׳•׳׳× ׳›׳×׳•׳‘׳× ׳”׳¢׳׳•׳“ ׳‘׳׳×׳¨.",
       severity: response.status >= 500 ? "urgent" : "local",
       payload: { path, status: response.status },
     });
@@ -125,23 +125,32 @@ async function checkUrl(path: string, title: string, area = "אתר הלקוחו
       title,
       area,
       status: "error",
-      detail: error instanceof Error ? error.message : "בדיקת זמינות העמוד נכשלה.",
-      recommendedAction: "בדוק זמינות אתר, דומיין, Vercel וחסימות רשת.",
+      detail: error instanceof Error ? error.message : "׳‘׳“׳™׳§׳× ׳–׳׳™׳ ׳•׳× ׳”׳¢׳׳•׳“ ׳ ׳›׳©׳׳”.",
+      recommendedAction: "׳‘׳“׳•׳§ ׳–׳׳™׳ ׳•׳× ׳׳×׳¨, ׳“׳•׳׳™׳™׳, Vercel ׳•׳—׳¡׳™׳׳•׳× ׳¨׳©׳×.",
       severity: "urgent",
       payload: { path },
     });
   }
 }
 
+async function checkUrlWithRetry(path: string, title: string, area?: string): Promise<MonitorCheck> {
+  const first = await checkUrl(path, title, area);
+  if (first.status !== "error") return { ...first, payload: { ...(first.payload || {}), attempts: 1 } };
+
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  const second = await checkUrl(path, title, area);
+  return { ...second, payload: { ...(second.payload || {}), attempts: 2 } };
+}
+
 async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
   const checks: MonitorCheck[] = [];
-  checks.push(await checkUrl("/cart", "עגלה ורכישה"));
-  checks.push(await checkUrl("/api/orders?account=0500000000", "Orders API", "Customer area"));
-  checks.push(await checkUrl("/", "דף הבית"));
-  checks.push(await checkUrl("/products?page=1", "עמוד כל הספרים"));
-  checks.push(await checkUrl("/wishlist", "עמוד מועדפים"));
-  checks.push(await checkUrl("/account", "אזור אישי"));
-  checks.push(await checkUrl("/cart", "עמוד העגלה"));
+  checks.push(await checkUrlWithRetry("/cart", "׳¢׳’׳׳” ׳•׳¨׳›׳™׳©׳”"));
+  checks.push(await checkUrlWithRetry("/api/orders?account=0500000000", "Orders API", "Customer area"));
+  checks.push(await checkUrlWithRetry("/", "׳“׳£ ׳”׳‘׳™׳×"));
+  checks.push(await checkUrlWithRetry("/products?page=1", "׳¢׳׳•׳“ ׳›׳ ׳”׳¡׳₪׳¨׳™׳"));
+  checks.push(await checkUrlWithRetry("/wishlist", "׳¢׳׳•׳“ ׳׳•׳¢׳“׳₪׳™׳"));
+  checks.push(await checkUrlWithRetry("/account", "׳׳–׳•׳¨ ׳׳™׳©׳™"));
+  checks.push(await checkUrlWithRetry("/cart", "׳¢׳׳•׳“ ׳”׳¢׳’׳׳”"));
 
   try {
     const response = await timedFetch(`${WEBSITE_URL}/api/system-health`);
@@ -149,11 +158,11 @@ async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
       checks.push(
         monitorCheck({
           key: "website:system-health",
-          title: "בדיקת בריאות פנימית באתר",
-          area: "אתר הלקוחות",
+          title: "׳‘׳“׳™׳§׳× ׳‘׳¨׳™׳׳•׳× ׳₪׳ ׳™׳׳™׳× ׳‘׳׳×׳¨",
+          area: "׳׳×׳¨ ׳”׳׳§׳•׳—׳•׳×",
           status: "warning",
-          detail: `/api/system-health באתר החזיר ${response.status}.`,
-          recommendedAction: "בדוק שה-endpoint קיים ופרוס באתר הלקוחות.",
+          detail: `/api/system-health ׳‘׳׳×׳¨ ׳”׳—׳–׳™׳¨ ${response.status}.`,
+          recommendedAction: "׳‘׳“׳•׳§ ׳©׳”-endpoint ׳§׳™׳™׳ ׳•׳₪׳¨׳•׳¡ ׳‘׳׳×׳¨ ׳”׳׳§׳•׳—׳•׳×.",
           severity: "local",
           payload: { status: response.status },
         })
@@ -188,15 +197,15 @@ async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
     checks.push(
       monitorCheck({
         key: "website:system-health",
-        title: "בדיקת בריאות פנימית באתר",
-        area: "אתר הלקוחות",
+        title: "׳‘׳“׳™׳§׳× ׳‘׳¨׳™׳׳•׳× ׳₪׳ ׳™׳׳™׳× ׳‘׳׳×׳¨",
+        area: "׳׳×׳¨ ׳”׳׳§׳•׳—׳•׳×",
         status: failing.length ? "error" : warning.length ? "warning" : "ok",
         detail: failing.length
-          ? `נמצאו ${failing.length} תקלות פנימיות באתר הלקוחות.`
+          ? `׳ ׳׳¦׳׳• ${failing.length} ׳×׳§׳׳•׳× ׳₪׳ ׳™׳׳™׳•׳× ׳‘׳׳×׳¨ ׳”׳׳§׳•׳—׳•׳×.`
           : warning.length
-            ? `נמצאו ${warning.length} אזהרות פנימיות באתר הלקוחות.`
-            : "בדיקות אתר הלקוחות עברו בהצלחה.",
-        recommendedAction: failing.length || warning.length ? "פתח את לשונית בריאות האתר בלוח הבקרה ובדוק את פירוט אתר הלקוחות." : undefined,
+            ? `׳ ׳׳¦׳׳• ${warning.length} ׳׳–׳”׳¨׳•׳× ׳₪׳ ׳™׳׳™׳•׳× ׳‘׳׳×׳¨ ׳”׳׳§׳•׳—׳•׳×.`
+            : "׳‘׳“׳™׳§׳•׳× ׳׳×׳¨ ׳”׳׳§׳•׳—׳•׳× ׳¢׳‘׳¨׳• ׳‘׳”׳¦׳׳—׳”.",
+        recommendedAction: failing.length || warning.length ? "׳₪׳×׳— ׳׳× ׳׳©׳•׳ ׳™׳× ׳‘׳¨׳™׳׳•׳× ׳”׳׳×׳¨ ׳‘׳׳•׳— ׳”׳‘׳§׳¨׳” ׳•׳‘׳“׳•׳§ ׳׳× ׳₪׳™׳¨׳•׳˜ ׳׳×׳¨ ׳”׳׳§׳•׳—׳•׳×." : undefined,
         severity: failing.length ? "urgent" : "local",
         payload: { failing: failing.length, warning: warning.length, details: healthDetails },
       })
@@ -205,11 +214,11 @@ async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
     checks.push(
       monitorCheck({
         key: "website:system-health",
-        title: "בדיקת בריאות פנימית באתר",
-        area: "אתר הלקוחות",
+        title: "׳‘׳“׳™׳§׳× ׳‘׳¨׳™׳׳•׳× ׳₪׳ ׳™׳׳™׳× ׳‘׳׳×׳¨",
+        area: "׳׳×׳¨ ׳”׳׳§׳•׳—׳•׳×",
         status: "warning",
-        detail: error instanceof Error ? error.message : "בדיקת הבריאות הפנימית של האתר לא ענתה.",
-        recommendedAction: "בדוק שהאתר פרוס וש-endpoint הבריאות פעיל.",
+        detail: error instanceof Error ? error.message : "׳‘׳“׳™׳§׳× ׳”׳‘׳¨׳™׳׳•׳× ׳”׳₪׳ ׳™׳׳™׳× ׳©׳ ׳”׳׳×׳¨ ׳׳ ׳¢׳ ׳×׳”.",
+        recommendedAction: "׳‘׳“׳•׳§ ׳©׳”׳׳×׳¨ ׳₪׳¨׳•׳¡ ׳•׳©-endpoint ׳”׳‘׳¨׳™׳׳•׳× ׳₪׳¢׳™׳.",
         severity: "local",
       })
     );
@@ -454,21 +463,21 @@ async function checkDatabase(): Promise<MonitorCheck[]> {
     checks.push(
       monitorCheck({
         key: "db:connection",
-        title: "חיבור למסד הנתונים",
-        area: "מסד נתונים",
+        title: "׳—׳™׳‘׳•׳¨ ׳׳׳¡׳“ ׳”׳ ׳×׳•׳ ׳™׳",
+        area: "׳׳¡׳“ ׳ ׳×׳•׳ ׳™׳",
         status: "ok",
-        detail: `החיבור פעיל למסד ${db.rows[0]?.database_name || "לא ידוע"}.`,
+        detail: `׳”׳—׳™׳‘׳•׳¨ ׳₪׳¢׳™׳ ׳׳׳¡׳“ ${db.rows[0]?.database_name || "׳׳ ׳™׳“׳•׳¢"}.`,
       })
     );
   } catch (error) {
     return [
       monitorCheck({
         key: "db:connection",
-        title: "חיבור למסד הנתונים",
-        area: "מסד נתונים",
+        title: "׳—׳™׳‘׳•׳¨ ׳׳׳¡׳“ ׳”׳ ׳×׳•׳ ׳™׳",
+        area: "׳׳¡׳“ ׳ ׳×׳•׳ ׳™׳",
         status: "error",
-        detail: error instanceof Error ? error.message : "חיבור למסד הנתונים נכשל.",
-        recommendedAction: "בדוק DATABASE_URL, סיסמה, sslmode ומצב Aiven.",
+        detail: error instanceof Error ? error.message : "׳—׳™׳‘׳•׳¨ ׳׳׳¡׳“ ׳”׳ ׳×׳•׳ ׳™׳ ׳ ׳›׳©׳.",
+        recommendedAction: "׳‘׳“׳•׳§ DATABASE_URL, ׳¡׳™׳¡׳׳”, sslmode ׳•׳׳¦׳‘ Aiven.",
         severity: "urgent",
       }),
     ];
@@ -493,11 +502,11 @@ async function checkDatabase(): Promise<MonitorCheck[]> {
       checks.push(
         monitorCheck({
           key: `db:table:${table}`,
-          title: `טבלת ${table}`,
-          area: "מסד נתונים",
+          title: `׳˜׳‘׳׳× ${table}`,
+          area: "׳׳¡׳“ ׳ ׳×׳•׳ ׳™׳",
           status: exists ? "ok" : table === "contact_requests" ? "warning" : "error",
-          detail: exists ? `הטבלה ${table} קיימת.` : `הטבלה ${table} חסרה.`,
-          recommendedAction: exists ? undefined : "בדוק יצירת טבלאות ומיגרציות במסד הנתונים.",
+          detail: exists ? `׳”׳˜׳‘׳׳” ${table} ׳§׳™׳™׳׳×.` : `׳”׳˜׳‘׳׳” ${table} ׳—׳¡׳¨׳”.`,
+          recommendedAction: exists ? undefined : "׳‘׳“׳•׳§ ׳™׳¦׳™׳¨׳× ׳˜׳‘׳׳׳•׳× ׳•׳׳™׳’׳¨׳¦׳™׳•׳× ׳‘׳׳¡׳“ ׳”׳ ׳×׳•׳ ׳™׳.",
           severity: exists ? undefined : table === "contact_requests" ? "local" : "urgent",
           payload: { table },
         })
@@ -507,11 +516,11 @@ async function checkDatabase(): Promise<MonitorCheck[]> {
     checks.push(
       monitorCheck({
         key: "db:critical-tables",
-        title: "טבלאות קריטיות",
-        area: "מסד נתונים",
+        title: "׳˜׳‘׳׳׳•׳× ׳§׳¨׳™׳˜׳™׳•׳×",
+        area: "׳׳¡׳“ ׳ ׳×׳•׳ ׳™׳",
         status: "error",
-        detail: error instanceof Error ? error.message : "בדיקת טבלאות קריטיות נכשלה.",
-        recommendedAction: "בדוק הרשאות וטבלאות orders/users/coupons/approval_requests.",
+        detail: error instanceof Error ? error.message : "׳‘׳“׳™׳§׳× ׳˜׳‘׳׳׳•׳× ׳§׳¨׳™׳˜׳™׳•׳× ׳ ׳›׳©׳׳”.",
+        recommendedAction: "׳‘׳“׳•׳§ ׳”׳¨׳©׳׳•׳× ׳•׳˜׳‘׳׳׳•׳× orders/users/coupons/approval_requests.",
         severity: "urgent",
       })
     );
@@ -530,11 +539,11 @@ async function checkDatabase(): Promise<MonitorCheck[]> {
     checks.push(
       monitorCheck({
         key: "orders:pipeline",
-        title: "צינור ההזמנות",
-        area: "הזמנות",
+        title: "׳¦׳™׳ ׳•׳¨ ׳”׳”׳–׳׳ ׳•׳×",
+        area: "׳”׳–׳׳ ׳•׳×",
         status: attention > 20 ? "warning" : "ok",
-        detail: `נמצאו ${Number(row.total || 0)} הזמנות, ${Number(row.recent || 0)} בשבוע האחרון, ${attention} דורשות תשומת לב.`,
-        recommendedAction: attention > 20 ? "פתח את לשונית הזמנות וסנן לפי סטטוסים שדורשים טיפול." : undefined,
+        detail: `׳ ׳׳¦׳׳• ${Number(row.total || 0)} ׳”׳–׳׳ ׳•׳×, ${Number(row.recent || 0)} ׳‘׳©׳‘׳•׳¢ ׳”׳׳—׳¨׳•׳, ${attention} ׳“׳•׳¨׳©׳•׳× ׳×׳©׳•׳׳× ׳׳‘.`,
+        recommendedAction: attention > 20 ? "׳₪׳×׳— ׳׳× ׳׳©׳•׳ ׳™׳× ׳”׳–׳׳ ׳•׳× ׳•׳¡׳ ׳ ׳׳₪׳™ ׳¡׳˜׳˜׳•׳¡׳™׳ ׳©׳“׳•׳¨׳©׳™׳ ׳˜׳™׳₪׳•׳." : undefined,
         severity: attention > 20 ? "local" : undefined,
       })
     );
@@ -542,11 +551,11 @@ async function checkDatabase(): Promise<MonitorCheck[]> {
     checks.push(
       monitorCheck({
         key: "orders:pipeline",
-        title: "צינור ההזמנות",
-        area: "הזמנות",
+        title: "׳¦׳™׳ ׳•׳¨ ׳”׳”׳–׳׳ ׳•׳×",
+        area: "׳”׳–׳׳ ׳•׳×",
         status: "error",
-        detail: error instanceof Error ? error.message : "לא ניתן לקרוא נתוני הזמנות.",
-        recommendedAction: "בדוק את טבלת orders ואת הרשאות מסד הנתונים.",
+        detail: error instanceof Error ? error.message : "׳׳ ׳ ׳™׳×׳ ׳׳§׳¨׳•׳ ׳ ׳×׳•׳ ׳™ ׳”׳–׳׳ ׳•׳×.",
+        recommendedAction: "׳‘׳“׳•׳§ ׳׳× ׳˜׳‘׳׳× orders ׳•׳׳× ׳”׳¨׳©׳׳•׳× ׳׳¡׳“ ׳”׳ ׳×׳•׳ ׳™׳.",
         severity: "urgent",
       })
     );
@@ -562,11 +571,11 @@ async function checkCatalog(): Promise<MonitorCheck[]> {
       return [
         monitorCheck({
           key: "catalog:products-json",
-          title: "קובץ סנכרון מוצרים",
-          area: "סנכרון",
+          title: "׳§׳•׳‘׳¥ ׳¡׳ ׳›׳¨׳•׳ ׳׳•׳¦׳¨׳™׳",
+          area: "׳¡׳ ׳›׳¨׳•׳",
           status: "warning",
-          detail: `קובץ המוצרים החזיר ${response.status}.`,
-          recommendedAction: "בדוק את GitHub Actions של סריקת המוצרים ואת products.json.",
+          detail: `׳§׳•׳‘׳¥ ׳”׳׳•׳¦׳¨׳™׳ ׳”׳—׳–׳™׳¨ ${response.status}.`,
+          recommendedAction: "׳‘׳“׳•׳§ ׳׳× GitHub Actions ׳©׳ ׳¡׳¨׳™׳§׳× ׳”׳׳•׳¦׳¨׳™׳ ׳•׳׳× products.json.",
           severity: "local",
         }),
       ];
@@ -593,17 +602,17 @@ async function checkCatalog(): Promise<MonitorCheck[]> {
     return [
       monitorCheck({
         key: "catalog:products-json",
-        title: "קובץ סנכרון מוצרים",
-        area: "סנכרון",
+        title: "׳§׳•׳‘׳¥ ׳¡׳ ׳›׳¨׳•׳ ׳׳•׳¦׳¨׳™׳",
+        area: "׳¡׳ ׳›׳¨׳•׳",
         status: products.length > 0 ? "ok" : "warning",
-        detail: `נטענו ${products.length} מוצרים, ${categories.size} קטגוריות מזוהות, ${withImages} מוצרים עם תמונה.`,
-        recommendedAction: products.length > 0 ? undefined : "הרץ מחדש את סריקת המוצרים.",
+        detail: `׳ ׳˜׳¢׳ ׳• ${products.length} ׳׳•׳¦׳¨׳™׳, ${categories.size} ׳§׳˜׳’׳•׳¨׳™׳•׳× ׳׳–׳•׳”׳•׳×, ${withImages} ׳׳•׳¦׳¨׳™׳ ׳¢׳ ׳×׳׳•׳ ׳”.`,
+        recommendedAction: products.length > 0 ? undefined : "׳”׳¨׳¥ ׳׳—׳“׳© ׳׳× ׳¡׳¨׳™׳§׳× ׳”׳׳•׳¦׳¨׳™׳.",
         severity: products.length > 0 ? undefined : "local",
       }),
       monitorCheck({
         key: "catalog:categories",
         title: "Product categories",
-        area: "׳¡׳ ׳›׳¨׳•׳",
+        area: "׳³ֲ¡׳³ֲ ׳³ג€÷׳³ֲ¨׳³ג€¢׳³ֲ",
         status: categories.size > 0 ? "ok" : "warning",
         detail: `Found ${categories.size} categories in the synced catalog.`,
         recommendedAction: categories.size > 0 ? undefined : "Verify the sync job exports category metadata from the source site.",
@@ -611,11 +620,11 @@ async function checkCatalog(): Promise<MonitorCheck[]> {
       }),
       monitorCheck({
         key: "catalog:variations",
-        title: "אפשרויות בחירה במוצרים",
-        area: "סנכרון",
+        title: "׳׳₪׳©׳¨׳•׳™׳•׳× ׳‘׳—׳™׳¨׳” ׳‘׳׳•׳¦׳¨׳™׳",
+        area: "׳¡׳ ׳›׳¨׳•׳",
         status: withVariations > 0 ? "ok" : "warning",
-        detail: `נמצאו ${withVariations} מוצרים עם וריאציות בקובץ הסנכרון.`,
-        recommendedAction: withVariations > 0 ? undefined : "בדוק שהסורק אוסף attributes ו-variations מהאתר המקורי.",
+        detail: `׳ ׳׳¦׳׳• ${withVariations} ׳׳•׳¦׳¨׳™׳ ׳¢׳ ׳•׳¨׳™׳׳¦׳™׳•׳× ׳‘׳§׳•׳‘׳¥ ׳”׳¡׳ ׳›׳¨׳•׳.`,
+        recommendedAction: withVariations > 0 ? undefined : "׳‘׳“׳•׳§ ׳©׳”׳¡׳•׳¨׳§ ׳׳•׳¡׳£ attributes ׳•-variations ׳׳”׳׳×׳¨ ׳”׳׳§׳•׳¨׳™.",
         severity: withVariations > 0 ? undefined : "local",
       }),
     ];
@@ -623,11 +632,11 @@ async function checkCatalog(): Promise<MonitorCheck[]> {
     return [
       monitorCheck({
         key: "catalog:products-json",
-        title: "קובץ סנכרון מוצרים",
-        area: "סנכרון",
+        title: "׳§׳•׳‘׳¥ ׳¡׳ ׳›׳¨׳•׳ ׳׳•׳¦׳¨׳™׳",
+        area: "׳¡׳ ׳›׳¨׳•׳",
         status: "warning",
-        detail: error instanceof Error ? error.message : "לא ניתן לקרוא את קובץ המוצרים.",
-        recommendedAction: "בדוק GitHub Actions ואת products.json.",
+        detail: error instanceof Error ? error.message : "׳׳ ׳ ׳™׳×׳ ׳׳§׳¨׳•׳ ׳׳× ׳§׳•׳‘׳¥ ׳”׳׳•׳¦׳¨׳™׳.",
+        recommendedAction: "׳‘׳“׳•׳§ GitHub Actions ׳•׳׳× products.json.",
         severity: "local",
       }),
     ];
@@ -714,12 +723,12 @@ async function checkGitHubRepository(repo: string): Promise<MonitorCheck[]> {
       monitorCheck({
         key: `github:${repo}:repo`,
         title: `GitHub - ${repo}`,
-        area: "GitHub וקוד",
+        area: "GitHub ׳•׳§׳•׳“",
         status: repoResponse.ok ? "ok" : repoResponse.status === 401 || repoResponse.status === 403 || repoResponse.status === 404 ? "warning" : "error",
         detail: repoResponse.ok
-          ? "המאגר זמין לבדיקה."
-          : `בדיקת המאגר החזירה ${repoResponse.status}.`,
-        recommendedAction: repoResponse.ok ? undefined : "הגדר GITHUB_MONITOR_TOKEN עם הרשאת קריאה למאגרים הרלוונטיים.",
+          ? "׳”׳׳׳’׳¨ ׳–׳׳™׳ ׳׳‘׳“׳™׳§׳”."
+          : `׳‘׳“׳™׳§׳× ׳”׳׳׳’׳¨ ׳”׳—׳–׳™׳¨׳” ${repoResponse.status}.`,
+        recommendedAction: repoResponse.ok ? undefined : "׳”׳’׳“׳¨ GITHUB_MONITOR_TOKEN ׳¢׳ ׳”׳¨׳©׳׳× ׳§׳¨׳™׳׳” ׳׳׳׳’׳¨׳™׳ ׳”׳¨׳׳•׳•׳ ׳˜׳™׳™׳.",
         severity: repoResponse.ok ? undefined : "security",
         payload: { repo, status: repoResponse.status },
       })
@@ -730,10 +739,10 @@ async function checkGitHubRepository(repo: string): Promise<MonitorCheck[]> {
         monitorCheck({
           key: `github:${repo}:actions`,
           title: `GitHub Actions - ${repo}`,
-          area: "אוטומציות",
+          area: "׳׳•׳˜׳•׳׳¦׳™׳•׳×",
           status: "warning",
-          detail: `לא ניתן לקרוא ריצות GitHub Actions עבור ${repo}. תשובת GitHub: ${runsResponse.status}.`,
-          recommendedAction: "הגדר GITHUB_MONITOR_TOKEN כדי לבדוק ריצות אוטומציה, כשלונות וסנכרונים.",
+          detail: `׳׳ ׳ ׳™׳×׳ ׳׳§׳¨׳•׳ ׳¨׳™׳¦׳•׳× GitHub Actions ׳¢׳‘׳•׳¨ ${repo}. ׳×׳©׳•׳‘׳× GitHub: ${runsResponse.status}.`,
+          recommendedAction: "׳”׳’׳“׳¨ GITHUB_MONITOR_TOKEN ׳›׳“׳™ ׳׳‘׳“׳•׳§ ׳¨׳™׳¦׳•׳× ׳׳•׳˜׳•׳׳¦׳™׳”, ׳›׳©׳׳•׳ ׳•׳× ׳•׳¡׳ ׳›׳¨׳•׳ ׳™׳.",
           severity: "local",
           payload: { repo, status: runsResponse.status },
         })
@@ -747,14 +756,14 @@ async function checkGitHubRepository(repo: string): Promise<MonitorCheck[]> {
       monitorCheck({
         key: `github:${repo}:actions`,
         title: `GitHub Actions - ${repo}`,
-        area: "אוטומציות",
+        area: "׳׳•׳˜׳•׳׳¦׳™׳•׳×",
         status: latest?.conclusion === "failure" || latest?.conclusion === "cancelled" ? "warning" : "ok",
         detail: latest
-          ? `הריצה האחרונה: ${latest.name || "workflow"} - ${latest.status || "unknown"} / ${latest.conclusion || "pending"}.`
-          : "לא נמצאו ריצות אוטומציה אחרונות.",
+          ? `׳”׳¨׳™׳¦׳” ׳”׳׳—׳¨׳•׳ ׳”: ${latest.name || "workflow"} - ${latest.status || "unknown"} / ${latest.conclusion || "pending"}.`
+          : "׳׳ ׳ ׳׳¦׳׳• ׳¨׳™׳¦׳•׳× ׳׳•׳˜׳•׳׳¦׳™׳” ׳׳—׳¨׳•׳ ׳•׳×.",
         recommendedAction:
           latest?.conclusion === "failure" || latest?.conclusion === "cancelled"
-            ? "פתח את GitHub Actions ובדוק את הלוג של הריצה האחרונה."
+            ? "׳₪׳×׳— ׳׳× GitHub Actions ׳•׳‘׳“׳•׳§ ׳׳× ׳”׳׳•׳’ ׳©׳ ׳”׳¨׳™׳¦׳” ׳”׳׳—׳¨׳•׳ ׳”."
             : undefined,
         severity: latest?.conclusion === "failure" ? "urgent" : "local",
         payload: { repo, run: latest?.html_url, conclusion: latest?.conclusion, status: latest?.status },
@@ -766,10 +775,10 @@ async function checkGitHubRepository(repo: string): Promise<MonitorCheck[]> {
       monitorCheck({
         key: `github:${repo}:unreachable`,
         title: `GitHub - ${repo}`,
-        area: "GitHub וקוד",
+        area: "GitHub ׳•׳§׳•׳“",
         status: "warning",
-        detail: error instanceof Error ? error.message : "בדיקת GitHub נכשלה.",
-        recommendedAction: "בדוק חיבור רשת והרשאת GITHUB_MONITOR_TOKEN.",
+        detail: error instanceof Error ? error.message : "׳‘׳“׳™׳§׳× GitHub ׳ ׳›׳©׳׳”.",
+        recommendedAction: "׳‘׳“׳•׳§ ׳—׳™׳‘׳•׳¨ ׳¨׳©׳× ׳•׳”׳¨׳©׳׳× GITHUB_MONITOR_TOKEN.",
         severity: "local",
         payload: { repo },
       }),
@@ -782,15 +791,15 @@ async function checkGitHub(): Promise<MonitorCheck[]> {
   const checks: MonitorCheck[] = [
     monitorCheck({
       key: "github:monitor-token",
-      title: "הרשאת בדיקת GitHub",
-      area: "GitHub וקוד",
+      title: "׳”׳¨׳©׳׳× ׳‘׳“׳™׳§׳× GitHub",
+      area: "GitHub ׳•׳§׳•׳“",
       status: hasGitHubToken ? "ok" : "warning",
       detail: hasGitHubToken
-        ? "קיים טוקן ייעודי לקריאת מאגרים וריצות."
-        : "לא מוגדר GITHUB_MONITOR_TOKEN, לכן בדיקות GitHub מוגבלות למה שציבורי בלבד.",
+        ? "׳§׳™׳™׳ ׳˜׳•׳§׳ ׳™׳™׳¢׳•׳“׳™ ׳׳§׳¨׳™׳׳× ׳׳׳’׳¨׳™׳ ׳•׳¨׳™׳¦׳•׳×."
+        : "׳׳ ׳׳•׳’׳“׳¨ GITHUB_MONITOR_TOKEN, ׳׳›׳ ׳‘׳“׳™׳§׳•׳× GitHub ׳׳•׳’׳‘׳׳•׳× ׳׳׳” ׳©׳¦׳™׳‘׳•׳¨׳™ ׳‘׳׳‘׳“.",
       recommendedAction: hasGitHubToken
         ? undefined
-        : "כדי לבדוק את כל הקוד, הריצות והאבטחה במאגרים פרטיים, הגדר GITHUB_MONITOR_TOKEN לקריאה בלבד.",
+        : "׳›׳“׳™ ׳׳‘׳“׳•׳§ ׳׳× ׳›׳ ׳”׳§׳•׳“, ׳”׳¨׳™׳¦׳•׳× ׳•׳”׳׳‘׳˜׳—׳” ׳‘׳׳׳’׳¨׳™׳ ׳₪׳¨׳˜׳™׳™׳, ׳”׳’׳“׳¨ GITHUB_MONITOR_TOKEN ׳׳§׳¨׳™׳׳” ׳‘׳׳‘׳“.",
       severity: hasGitHubToken ? undefined : "security",
     }),
   ];
@@ -802,11 +811,11 @@ async function checkResend(): Promise<MonitorCheck> {
   if (!configured("RESEND_API_KEY")) {
     return monitorCheck({
       key: "resend:api-key",
-      title: "Resend - שליחת מיילים",
-      area: "מיילים",
+      title: "Resend - ׳©׳׳™׳—׳× ׳׳™׳™׳׳™׳",
+      area: "׳׳™׳™׳׳™׳",
       status: "warning",
-      detail: "לא מוגדר RESEND_API_KEY בלוח הבקרה.",
-      recommendedAction: "הגדר RESEND_API_KEY כדי לשלוח התראות, איפוס סיסמה ובקשות אישור.",
+      detail: "׳׳ ׳׳•׳’׳“׳¨ RESEND_API_KEY ׳‘׳׳•׳— ׳”׳‘׳§׳¨׳”.",
+      recommendedAction: "׳”׳’׳“׳¨ RESEND_API_KEY ׳›׳“׳™ ׳׳©׳׳•׳— ׳”׳×׳¨׳׳•׳×, ׳׳™׳₪׳•׳¡ ׳¡׳™׳¡׳׳” ׳•׳‘׳§׳©׳•׳× ׳׳™׳©׳•׳¨.",
       severity: "local",
     });
   }
@@ -817,24 +826,24 @@ async function checkResend(): Promise<MonitorCheck> {
     });
     return monitorCheck({
       key: "resend:api",
-      title: "Resend - שליחת מיילים",
-      area: "מיילים",
+      title: "Resend - ׳©׳׳™׳—׳× ׳׳™׳™׳׳™׳",
+      area: "׳׳™׳™׳׳™׳",
       status: response.ok || response.status === 401 || response.status === 403 ? "ok" : "warning",
       detail: response.ok
-        ? "Resend ענה בהצלחה."
-        : `Resend ענה בסטטוס ${response.status}; המפתח קיים אך כדאי לבדוק הרשאות ודומיין.`,
-      recommendedAction: response.ok ? undefined : "בדוק את הדומיין המאומת ואת הרשאות Resend.",
+        ? "Resend ׳¢׳ ׳” ׳‘׳”׳¦׳׳—׳”."
+        : `Resend ׳¢׳ ׳” ׳‘׳¡׳˜׳˜׳•׳¡ ${response.status}; ׳”׳׳₪׳×׳— ׳§׳™׳™׳ ׳׳ ׳›׳“׳׳™ ׳׳‘׳“׳•׳§ ׳”׳¨׳©׳׳•׳× ׳•׳“׳•׳׳™׳™׳.`,
+      recommendedAction: response.ok ? undefined : "׳‘׳“׳•׳§ ׳׳× ׳”׳“׳•׳׳™׳™׳ ׳”׳׳׳•׳׳× ׳•׳׳× ׳”׳¨׳©׳׳•׳× Resend.",
       severity: response.ok ? undefined : "local",
       payload: { status: response.status },
     });
   } catch (error) {
     return monitorCheck({
       key: "resend:api",
-      title: "Resend - שליחת מיילים",
-      area: "מיילים",
+      title: "Resend - ׳©׳׳™׳—׳× ׳׳™׳™׳׳™׳",
+      area: "׳׳™׳™׳׳™׳",
       status: "warning",
-      detail: error instanceof Error ? error.message : "בדיקת Resend נכשלה.",
-      recommendedAction: "בדוק את Resend ואת החיבור החיצוני.",
+      detail: error instanceof Error ? error.message : "׳‘׳“׳™׳§׳× Resend ׳ ׳›׳©׳׳”.",
+      recommendedAction: "׳‘׳“׳•׳§ ׳׳× Resend ׳•׳׳× ׳”׳—׳™׳‘׳•׳¨ ׳”׳—׳™׳¦׳•׳ ׳™.",
       severity: "local",
     });
   }
@@ -845,10 +854,10 @@ async function checkGemini(): Promise<MonitorCheck> {
     return monitorCheck({
       key: "ai:gemini",
       title: "Gemini / AI Studio",
-      area: "AI ושירות לקוחות",
+      area: "AI ׳•׳©׳™׳¨׳•׳× ׳׳§׳•׳—׳•׳×",
       status: "warning",
-      detail: "לא מוגדר GEMINI_API_KEY בלוח הבקרה.",
-      recommendedAction: "הגדר GEMINI_API_KEY כדי לבדוק ולתפעל את שירות הלקוחות AI.",
+      detail: "׳׳ ׳׳•׳’׳“׳¨ GEMINI_API_KEY ׳‘׳׳•׳— ׳”׳‘׳§׳¨׳”.",
+      recommendedAction: "׳”׳’׳“׳¨ GEMINI_API_KEY ׳›׳“׳™ ׳׳‘׳“׳•׳§ ׳•׳׳×׳₪׳¢׳ ׳׳× ׳©׳™׳¨׳•׳× ׳”׳׳§׳•׳—׳•׳× AI.",
       severity: "local",
     });
   }
@@ -858,10 +867,10 @@ async function checkGemini(): Promise<MonitorCheck> {
     return monitorCheck({
       key: "ai:gemini",
       title: "Gemini / AI Studio",
-      area: "AI ושירות לקוחות",
+      area: "AI ׳•׳©׳™׳¨׳•׳× ׳׳§׳•׳—׳•׳×",
       status: response.ok ? "ok" : "warning",
-      detail: response.ok ? "Gemini ענה בהצלחה." : `Gemini החזיר ${response.status}.`,
-      recommendedAction: response.ok ? undefined : "בדוק את מפתח Gemini ואת מכסת השימוש ב-Google AI Studio.",
+      detail: response.ok ? "Gemini ׳¢׳ ׳” ׳‘׳”׳¦׳׳—׳”." : `Gemini ׳”׳—׳–׳™׳¨ ${response.status}.`,
+      recommendedAction: response.ok ? undefined : "׳‘׳“׳•׳§ ׳׳× ׳׳₪׳×׳— Gemini ׳•׳׳× ׳׳›׳¡׳× ׳”׳©׳™׳׳•׳© ׳‘-Google AI Studio.",
       severity: response.ok ? undefined : "local",
       payload: { status: response.status },
     });
@@ -869,10 +878,10 @@ async function checkGemini(): Promise<MonitorCheck> {
     return monitorCheck({
       key: "ai:gemini",
       title: "Gemini / AI Studio",
-      area: "AI ושירות לקוחות",
+      area: "AI ׳•׳©׳™׳¨׳•׳× ׳׳§׳•׳—׳•׳×",
       status: "warning",
-      detail: error instanceof Error ? error.message : "בדיקת Gemini נכשלה.",
-      recommendedAction: "בדוק מפתח Gemini, מכסה וחיבור לשירות Google AI Studio.",
+      detail: error instanceof Error ? error.message : "׳‘׳“׳™׳§׳× Gemini ׳ ׳›׳©׳׳”.",
+      recommendedAction: "׳‘׳“׳•׳§ ׳׳₪׳×׳— Gemini, ׳׳›׳¡׳” ׳•׳—׳™׳‘׳•׳¨ ׳׳©׳™׳¨׳•׳× Google AI Studio.",
       severity: "local",
     });
   }
@@ -882,11 +891,11 @@ async function checkOpenAIRepairEngine(): Promise<MonitorCheck> {
   if (!configured("OPENAI_API_KEY")) {
     return monitorCheck({
       key: "ai:openai-repair",
-      title: "OpenAI - מנוע תיקונים חכם",
-      area: "AI ותיקונים",
+      title: "OpenAI - ׳׳ ׳•׳¢ ׳×׳™׳§׳•׳ ׳™׳ ׳—׳›׳",
+      area: "AI ׳•׳×׳™׳§׳•׳ ׳™׳",
       status: "warning",
-      detail: "לא מוגדר OPENAI_API_KEY בלוח הבקרה.",
-      recommendedAction: "הגדר OPENAI_API_KEY כדי שמערכת התיקונים תוכל לנתח לוגים ובעיות בעזרת AI.",
+      detail: "׳׳ ׳׳•׳’׳“׳¨ OPENAI_API_KEY ׳‘׳׳•׳— ׳”׳‘׳§׳¨׳”.",
+      recommendedAction: "׳”׳’׳“׳¨ OPENAI_API_KEY ׳›׳“׳™ ׳©׳׳¢׳¨׳›׳× ׳”׳×׳™׳§׳•׳ ׳™׳ ׳×׳•׳›׳ ׳׳ ׳×׳— ׳׳•׳’׳™׳ ׳•׳‘׳¢׳™׳•׳× ׳‘׳¢׳–׳¨׳× AI.",
       severity: "local",
     });
   }
@@ -897,22 +906,22 @@ async function checkOpenAIRepairEngine(): Promise<MonitorCheck> {
     }, 12000);
     return monitorCheck({
       key: "ai:openai-repair",
-      title: "OpenAI - מנוע תיקונים חכם",
-      area: "AI ותיקונים",
+      title: "OpenAI - ׳׳ ׳•׳¢ ׳×׳™׳§׳•׳ ׳™׳ ׳—׳›׳",
+      area: "AI ׳•׳×׳™׳§׳•׳ ׳™׳",
       status: response.ok ? "ok" : "warning",
-      detail: response.ok ? "OpenAI ענה בהצלחה ומוכן לניתוח תיקונים." : `OpenAI החזיר ${response.status}.`,
-      recommendedAction: response.ok ? undefined : "בדוק את מפתח OpenAI, הרשאות הפרויקט ומכסת השימוש.",
+      detail: response.ok ? "OpenAI ׳¢׳ ׳” ׳‘׳”׳¦׳׳—׳” ׳•׳׳•׳›׳ ׳׳ ׳™׳×׳•׳— ׳×׳™׳§׳•׳ ׳™׳." : `OpenAI ׳”׳—׳–׳™׳¨ ${response.status}.`,
+      recommendedAction: response.ok ? undefined : "׳‘׳“׳•׳§ ׳׳× ׳׳₪׳×׳— OpenAI, ׳”׳¨׳©׳׳•׳× ׳”׳₪׳¨׳•׳™׳§׳˜ ׳•׳׳›׳¡׳× ׳”׳©׳™׳׳•׳©.",
       severity: response.ok ? undefined : "local",
       payload: { status: response.status },
     });
   } catch (error) {
     return monitorCheck({
       key: "ai:openai-repair",
-      title: "OpenAI - מנוע תיקונים חכם",
-      area: "AI ותיקונים",
+      title: "OpenAI - ׳׳ ׳•׳¢ ׳×׳™׳§׳•׳ ׳™׳ ׳—׳›׳",
+      area: "AI ׳•׳×׳™׳§׳•׳ ׳™׳",
       status: "warning",
-      detail: error instanceof Error ? error.message : "בדיקת OpenAI נכשלה.",
-      recommendedAction: "בדוק מפתח OpenAI, מכסה וחיבור לרשת.",
+      detail: error instanceof Error ? error.message : "׳‘׳“׳™׳§׳× OpenAI ׳ ׳›׳©׳׳”.",
+      recommendedAction: "׳‘׳“׳•׳§ ׳׳₪׳×׳— OpenAI, ׳׳›׳¡׳” ׳•׳—׳™׳‘׳•׳¨ ׳׳¨׳©׳×.",
       severity: "local",
     });
   }
@@ -922,25 +931,25 @@ function checkExternalAccessCoverage(): MonitorCheck[] {
   const required = [
     {
       key: "vercel:token",
-      title: "Vercel - בדיקת פריסות וסביבות",
+      title: "Vercel - ׳‘׳“׳™׳§׳× ׳₪׳¨׳™׳¡׳•׳× ׳•׳¡׳‘׳™׳‘׳•׳×",
       env: "VERCEL_MONITOR_TOKEN",
       area: "Vercel",
-      action: "כדי לבדוק פריסות, לוגים ומשתני סביבה ב-Vercel, הגדר VERCEL_MONITOR_TOKEN לקריאה בלבד.",
+      action: "׳›׳“׳™ ׳׳‘׳“׳•׳§ ׳₪׳¨׳™׳¡׳•׳×, ׳׳•׳’׳™׳ ׳•׳׳©׳×׳ ׳™ ׳¡׳‘׳™׳‘׳” ׳‘-Vercel, ׳”׳’׳“׳¨ VERCEL_MONITOR_TOKEN ׳׳§׳¨׳™׳׳” ׳‘׳׳‘׳“.",
     },
     {
       key: "aiven:token",
-      title: "Aiven - ניטור מסד נתונים",
+      title: "Aiven - ׳ ׳™׳˜׳•׳¨ ׳׳¡׳“ ׳ ׳×׳•׳ ׳™׳",
       env: "AIVEN_MONITOR_TOKEN",
-      area: "Aiven ומסד נתונים",
-      action: "כדי לבדוק מצב שירות Aiven, אחסון, CPU וגיבויים, הגדר AIVEN_MONITOR_TOKEN לקריאה בלבד.",
+      area: "Aiven ׳•׳׳¡׳“ ׳ ׳×׳•׳ ׳™׳",
+      action: "׳›׳“׳™ ׳׳‘׳“׳•׳§ ׳׳¦׳‘ ׳©׳™׳¨׳•׳× Aiven, ׳׳—׳¡׳•׳, CPU ׳•׳’׳™׳‘׳•׳™׳™׳, ׳”׳’׳“׳¨ AIVEN_MONITOR_TOKEN ׳׳§׳¨׳™׳׳” ׳‘׳׳‘׳“.",
     },
     {
       key: "security:code-audit",
-      title: "סריקת קוד ואבטחה מלאה",
+      title: "׳¡׳¨׳™׳§׳× ׳§׳•׳“ ׳•׳׳‘׳˜׳—׳” ׳׳׳׳”",
       env: "GITHUB_MONITOR_TOKEN",
       fallbackEnvs: ["REPAIR_GITHUB_TOKEN", "GITHUB_REPAIR_TOKEN"],
-      area: "אבטחת קוד",
-      action: "כדי לסרוק את כל המאגרים, workflows וקבצי ההגדרה, נדרש GITHUB_MONITOR_TOKEN לקריאה בלבד.",
+      area: "׳׳‘׳˜׳—׳× ׳§׳•׳“",
+      action: "׳›׳“׳™ ׳׳¡׳¨׳•׳§ ׳׳× ׳›׳ ׳”׳׳׳’׳¨׳™׳, workflows ׳•׳§׳‘׳¦׳™ ׳”׳”׳’׳“׳¨׳”, ׳ ׳“׳¨׳© GITHUB_MONITOR_TOKEN ׳׳§׳¨׳™׳׳” ׳‘׳׳‘׳“.",
     },
   ];
 
@@ -952,8 +961,8 @@ function checkExternalAccessCoverage(): MonitorCheck[] {
       area: item.area,
       status: configuredEnv ? "ok" : "warning",
       detail: configuredEnv
-        ? `ההרשאה ${configuredEnv} מוגדרת.`
-        : `ההרשאה ${item.env} עדיין לא מוגדרת, ולכן הכיסוי בתחום זה חלקי.`,
+        ? `׳”׳”׳¨׳©׳׳” ${configuredEnv} ׳׳•׳’׳“׳¨׳×.`
+        : `׳”׳”׳¨׳©׳׳” ${item.env} ׳¢׳“׳™׳™׳ ׳׳ ׳׳•׳’׳“׳¨׳×, ׳•׳׳›׳ ׳”׳›׳™׳¡׳•׳™ ׳‘׳×׳—׳•׳ ׳–׳” ׳—׳׳§׳™.`,
       recommendedAction: configuredEnv ? undefined : item.action,
       severity: configuredEnv ? undefined : "security",
     });
@@ -988,7 +997,7 @@ async function createApprovalRequests(checks: MonitorCheck[]) {
         description: item.detail,
         severity: item.severity || (item.status === "error" ? "urgent" : "local"),
         source: "internal-monitor",
-        recommendedAction: approvalAction.recommendedAction || "בדוק בלשונית בריאות האתר.",
+        recommendedAction: approvalAction.recommendedAction || "׳‘׳“׳•׳§ ׳‘׳׳©׳•׳ ׳™׳× ׳‘׳¨׳™׳׳•׳× ׳”׳׳×׳¨.",
         actionKey: approvalAction.actionKey,
         payload: approvalAction.payload,
         fingerprint: `internal-monitor:${item.key}:${item.status}`,
@@ -1058,7 +1067,7 @@ function buildSummary(checks: MonitorCheck[]) {
 
 export async function GET(request: Request) {
   if (!cronAllowed(request)) {
-    return NextResponse.json({ error: "לא מורשה" }, { status: 401 });
+    return NextResponse.json({ error: "׳׳ ׳׳•׳¨׳©׳”" }, { status: 401 });
   }
 
   const [website, publicDomain, dashboardOps, database, catalog, coupons, github, resend, gemini, openaiRepair] = await Promise.all([
@@ -1096,3 +1105,4 @@ export async function GET(request: Request) {
     checks,
   });
 }
+
