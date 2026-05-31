@@ -19,7 +19,8 @@ type MonitorCheck = {
 const pool = createDbPool();
 
 const WEBSITE_URL = process.env.WEBSITE_URL || "https://masoret-website.vercel.app";
-const PUBLIC_WEBSITE_URL = process.env.PUBLIC_WEBSITE_URL || "https://www.seferkodesh.co.il";
+const PUBLIC_WEBSITE_CONFIGURED = Boolean(process.env.PUBLIC_WEBSITE_URL?.trim());
+const PUBLIC_WEBSITE_URL = process.env.PUBLIC_WEBSITE_URL?.trim() || "";
 const PRODUCTS_CATALOG_URL =
   process.env.PRODUCTS_CATALOG_URL ||
   "https://raw.githubusercontent.com/hatbaot2554-hue/masoret-automation/main/products.json";
@@ -219,6 +220,7 @@ async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
 
 async function checkPublicDomainRouting(): Promise<MonitorCheck[]> {
   const checks: MonitorCheck[] = [];
+  if (!PUBLIC_WEBSITE_CONFIGURED) return checks;
 
   let websiteHost = "";
   let publicHost = "";
@@ -1010,6 +1012,12 @@ async function resolveHealthyApprovalRequests(checks: MonitorCheck[]) {
   if (healthyKeys.includes("ai:openai-repair")) {
     legacyHealthyFingerprints.add("system-health:OPENAI_API_KEY:missing");
     legacyHealthyFingerprints.add("system-health:OPENAI_API_KEY:warning");
+  }
+  if (!PUBLIC_WEBSITE_CONFIGURED) {
+    legacyHealthyFingerprints.add("internal-monitor:public-domain:account:error");
+    legacyHealthyFingerprints.add("internal-monitor:public-domain:account:warning");
+    legacyHealthyFingerprints.add("internal-monitor:public-domain:system-health:error");
+    legacyHealthyFingerprints.add("internal-monitor:public-domain:system-health:warning");
   }
 
   if (!healthyKeys.length && !legacyHealthyFingerprints.size) return;
