@@ -880,14 +880,25 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!authed || (activeView !== 'management' && activeView !== 'health') || !canManageSystem) return;
-    setRepairError('');
-    fetch('/api/repair-jobs', { headers: dashboardAuthHeaders(), cache: 'no-store' })
-      .then(async (res) => {
-        const data = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(data?.error || 'לא ניתן לטעון תהליכי תיקון.');
-        setRepairJobs(Array.isArray(data?.jobs) ? data.jobs : []);
-      })
-      .catch((error) => setRepairError(error.message || 'לא ניתן לטעון תהליכי תיקון.'));
+    let stopped = false;
+    const loadRepairJobs = () => {
+      setRepairError('');
+      fetch('/api/repair-jobs', { headers: dashboardAuthHeaders(), cache: 'no-store' })
+        .then(async (res) => {
+          const data = await res.json().catch(() => null);
+          if (!res.ok) throw new Error(data?.error || 'לא ניתן לטעון תהליכי תיקון.');
+          if (!stopped) setRepairJobs(Array.isArray(data?.jobs) ? data.jobs : []);
+        })
+        .catch((error) => {
+          if (!stopped) setRepairError(error.message || 'לא ניתן לטעון תהליכי תיקון.');
+        });
+    };
+    loadRepairJobs();
+    const timer = window.setInterval(loadRepairJobs, 5000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
   }, [activeView, authed, canManageSystem]);
 
   useEffect(() => {
@@ -1208,7 +1219,16 @@ export default function Dashboard() {
             await waitForRepairStep(450);
             await updateRepairJobProgress(repairId, 'running', 'בודק איזה חלק במערכת מושפע: אתר, לוח בקרה, מסד נתונים, אוטומציות או הגדרות אבטחה.', 'info');
             await waitForRepairStep(450);
-            await updateRepairJobProgress(repairId, 'running', 'רץ התיקונים נמצא בתהליך עבודה. אם נדרש שינוי קוד או גישה חיצונית, הוא יעדכן כאן כל שלב עד לסיום.', 'warning');
+            await updateRepairJobProgress(repairId, 'running', 'מעביר את המשימה לרץ תיקונים חינמי ב-GitHub Actions. הוא יעדכן כאן כל שלב עד לסיום או עד חסם הרשאות.', 'info');
+            const dispatchRes = await fetch('/api/repair-runner/dispatch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
+              body: JSON.stringify({ id: repairId }),
+            });
+            const dispatchData = await dispatchRes.json().catch(() => null);
+            if (!dispatchRes.ok) {
+              await updateRepairJobProgress(repairId, 'blocked', dispatchData?.error || 'לא ניתן להפעיל את רץ התיקונים.', 'warning');
+            }
           } else {
             await updateRepairJobProgress(repairId, 'rejected', 'המשימה נדחתה ולא תבוצע.', 'warning');
           }
