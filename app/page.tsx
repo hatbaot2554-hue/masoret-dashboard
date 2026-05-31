@@ -141,6 +141,7 @@ type ApprovalRequest = {
   source: string;
   recommended_action?: string | null;
   action_key?: string | null;
+  payload?: unknown;
   status: 'pending' | 'approved' | 'rejected' | 'done';
   decided_by?: string | null;
   decided_at?: string | null;
@@ -332,6 +333,96 @@ function approvalProgressStatusLabel(status: ApprovalProgress['status']) {
   if (status === 'completed') return 'התיקון הושלם בהצלחה';
   if (status === 'failed') return 'התיקון נכשל';
   return 'נדחה';
+}
+
+function parseApprovalPayload(payload: ApprovalRequest['payload']): Record<string, unknown> {
+  if (!payload) return {};
+  if (typeof payload === 'string') {
+    try {
+      const parsed = JSON.parse(payload);
+      return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
+  }
+  return typeof payload === 'object' ? payload as Record<string, unknown> : {};
+}
+
+function approvalTextForDiagnosis(request: ApprovalRequest) {
+  const payload = parseApprovalPayload(request.payload);
+  return [
+    request.title,
+    request.description,
+    request.recommended_action,
+    request.action_key,
+    payload.key,
+    payload.title,
+    payload.detail,
+    payload.recommendedAction,
+  ].filter(Boolean).join(' ');
+}
+
+function missingExternalSecret(request: ApprovalRequest) {
+  const text = approvalTextForDiagnosis(request);
+  if (text.includes('VERCEL_MONITOR_TOKEN')) return 'VERCEL_MONITOR_TOKEN';
+  if (text.includes('GITHUB_MONITOR_TOKEN')) return 'GITHUB_MONITOR_TOKEN';
+  if (text.includes('AIVEN_MONITOR_TOKEN')) return 'AIVEN_MONITOR_TOKEN';
+  if (text.includes('RESEND_API_KEY')) return 'RESEND_API_KEY';
+  if (text.includes('GEMINI_API_KEY')) return 'GEMINI_API_KEY';
+  return '';
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function approvalDiagnosisLogs(request: ApprovalRequest, status: ApprovalProgress['status'] = 'running', extra?: string): RepairJobLog[] {
+  const now = Date.now();
+  const payload = parseApprovalPayload(request.payload);
+  const area = String(payload.area || request.source || 'מערכת');
+  const key = String(payload.key || request.action_key || `approval:${request.id}`);
+  const secret = missingExternalSecret(request);
+  const logs: RepairJobLog[] = [
+    {
+      at: new Date(now - 5000).toISOString(),
+      level: 'info',
+      text: `קורא את בקשת האישור #${request.id}: ${request.title}`,
+    },
+    {
+      at: new Date(now - 4000).toISOString(),
+      level: 'info',
+      text: `ממפה את מקור הבעיה: תחום ${area}, מזהה בדיקה ${key}.`,
+    },
+    {
+      at: new Date(now - 3000).toISOString(),
+      level: 'info',
+      text: `בודק את הפעולה המומלצת: ${request.recommended_action || 'לא נמסרה פעולה אוטומטית מוגדרת, לכן נדרש אבחון זהיר לפני שינוי.'}`,
+    },
+  ];
+
+  if (secret) {
+    logs.unshift({
+      at: new Date(now - 1000).toISOString(),
+      level: status === 'failed' ? 'error' : 'warning',
+      text: `מקור הבעיה נמצא: חסר משתנה סביבה חיצוני בשם ${secret}. בלי הערך הסודי הזה המערכת לא יכולה להתחבר לשירות הרלוונטי ולכן לא יכולה להשלים את התיקון לבד.`,
+    });
+    logs.unshift({
+      at: new Date(now).toISOString(),
+      level: status === 'failed' ? 'error' : 'warning',
+      text: `השלב הבא: להוסיף את ${secret} ב-Vercel ולבצע Redeploy. אחרי זה הבדיקה תוכל לרוץ שוב ולוודא שהבעיה נפתרה.`,
+    });
+  } else if (request.action_key === 'approval:review_only') {
+    logs.unshift({
+      at: new Date(now).toISOString(),
+      level: 'warning',
+      text: 'המערכת זיהתה שאין לפעולה הזו תיקון אוטומטי בטוח שמוגדר מראש. היא מסמנת את האישור למעקב ולא משנה קוד או הרשאות בלי מנגנון תיקון ייעודי.',
+    });
+  } else {
+    logs.unshift({
+      at: new Date(now).toISOString(),
+      level: status === 'completed' ? 'success' : 'info',
+      text: extra || 'הפעולה האוטומטית הופעלה לפי סוג האישור ותוצאותיה נרשמות כאן.',
+    });
+  }
+
+  return logs;
 }
 
 function repairStageClass(status: string, stage: 'approval' | 'scan' | 'work' | 'done') {
@@ -675,6 +766,14 @@ export default function Dashboard() {
   useEffect(() => {
     const token = sessionStorage.getItem('dashboard_token');
     const user = sessionStorage.getItem('dashboard_user');
+    const savedProgress = sessionStorage.getItem('approval_progress');
+    if (savedProgress) {
+      try {
+        setApprovalProgress(JSON.parse(savedProgress));
+      } catch {
+        sessionStorage.removeItem('approval_progress');
+      }
+    }
     if (token && user) {
       try {
         setCurrentUser(JSON.parse(user));
@@ -684,6 +783,12 @@ export default function Dashboard() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('approval_progress', JSON.stringify(approvalProgress));
+    }
+  }, [approvalProgress]);
 
   async function fetchOrders() {
     setLoading(true);
@@ -1037,10 +1142,21 @@ export default function Dashboard() {
     });
   }
 
+  function replaceApprovalProgress(id: number, progress: ApprovalProgress) {
+    setApprovalProgress((current) => ({ ...current, [id]: progress }));
+  }
+
   async function decideApprovalRequest(id: number, status: 'approved' | 'rejected') {
     setApprovalSaving(id);
     setApprovalError('');
+    const request = approvalRequests.find((item) => item.id === id);
     try {
+      if (request) {
+        replaceApprovalProgress(id, {
+          status: status === 'approved' ? 'running' : 'rejected',
+          logs: approvalDiagnosisLogs(request, status === 'approved' ? 'running' : 'rejected'),
+        });
+      }
       appendApprovalProgress(
         id,
         status === 'approved' ? 'running' : 'rejected',
@@ -1052,6 +1168,18 @@ export default function Dashboard() {
       if (status === 'approved') {
         await waitForRepairStep(350);
         appendApprovalProgress(id, 'running', 'בודק את מקור הבעיה, את הפעולה המומלצת ואת ההרשאות שנדרשות לביצוע בטוח.');
+        await waitForRepairStep(350);
+        if (request) {
+          const secret = missingExternalSecret(request);
+          appendApprovalProgress(
+            id,
+            'running',
+            secret
+              ? `נמצא חסם מרכזי: חסר ${secret}. זה סוד חיצוני ולכן המערכת לא יכולה להשלים אותו לבד מתוך הדפדפן.`
+              : `לא נמצא חסם של סוד חיצוני. ממשיך לבדוק אם קיימת פעולה אוטומטית מוגדרת עבור ${request.action_key || 'בקשה כללית'}.`,
+            secret ? 'warning' : 'info'
+          );
+        }
       }
       const res = await fetch('/api/approval-requests', {
         method: 'PATCH',
@@ -1087,7 +1215,14 @@ export default function Dashboard() {
         }
       } else if (status === 'approved') {
         await waitForRepairStep(450);
-        appendApprovalProgress(id, 'completed', 'התהליך הסתיים בצד לוח הבקרה. אם נדרש שינוי קוד עמוק יותר, תיפתח משימת תיקון ייעודית שתמשיך מכאן.', 'success', 'התיקון הושלם בהצלחה');
+        const secret = request ? missingExternalSecret(request) : '';
+        if (secret) {
+          appendApprovalProgress(id, 'failed', `התיקון נעצר בצורה בטוחה כי חסר ${secret}. אחרי שתוסיף את המשתנה ב-Vercel ותבצע Redeploy, הרץ שוב את בדיקת הבריאות.`, 'warning');
+        } else if (request?.action_key === 'approval:review_only') {
+          appendApprovalProgress(id, 'failed', 'אין לפעולה הזו רץ תיקונים שמוגדר לבצע שינוי בפועל. המערכת שמרה את האישור והציגה את מקור הבעיה, אבל לא שינתה קוד או הרשאות.', 'warning');
+        } else {
+          appendApprovalProgress(id, 'completed', 'התהליך הסתיים בצד לוח הבקרה. אם נדרש שינוי קוד עמוק יותר, תיפתח משימת תיקון ייעודית שתמשיך מכאן.', 'success', 'התיקון הושלם בהצלחה');
+        }
       }
     } catch (error) {
       appendApprovalProgress(id, 'failed', error instanceof Error ? error.message : 'התיקון נכשל בזמן העדכון.', 'error');
@@ -1413,6 +1548,13 @@ export default function Dashboard() {
                           ? { status: linkedRepairJob.status, logs: linkedRepairLogs, title: repairStatusLabel(linkedRepairJob.status), taskId: linkedRepairJob.id }
                           : progress
                             ? { status: progress.status, logs: progress.logs, title: approvalProgressStatusLabel(progress.status), taskId: null }
+                            : request.status !== 'pending'
+                              ? {
+                                  status: request.status === 'rejected' ? 'rejected' : missingExternalSecret(request) || request.action_key === 'approval:review_only' ? 'failed' : 'completed',
+                                  logs: approvalDiagnosisLogs(request, request.status === 'rejected' ? 'rejected' : missingExternalSecret(request) || request.action_key === 'approval:review_only' ? 'failed' : 'completed'),
+                                  title: approvalProgressStatusLabel(request.status === 'rejected' ? 'rejected' : missingExternalSecret(request) || request.action_key === 'approval:review_only' ? 'failed' : 'completed'),
+                                  taskId: null,
+                                }
                             : null;
                         const isRunning = approvalSaving === request.id || progress?.status === 'running' || linkedRepairJob?.status === 'running';
                         return (
