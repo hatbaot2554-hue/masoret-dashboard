@@ -315,10 +315,14 @@ function repairStatusLabel(status: string) {
       return 'ממתין לאישור';
     case 'approved_for_work':
       return 'אושר וממתין לרץ התיקונים';
+    case 'queued':
+      return 'ממתין בתור לרץ התיקונים';
     case 'running':
       return 'בתהליך תיקון';
     case 'completed':
       return 'התיקון הושלם בהצלחה';
+    case 'blocked':
+      return 'נחסם וממתין להשלמת הרשאה';
     case 'failed':
       return 'התיקון נכשל';
     case 'rejected':
@@ -430,7 +434,9 @@ function repairStageClass(status: string, stage: 'approval' | 'scan' | 'work' | 
     needs_approval: 0,
     rejected: 0,
     approved_for_work: 1,
+    queued: 1,
     running: 2,
+    blocked: 2,
     failed: 2,
     completed: 3,
   };
@@ -1576,7 +1582,7 @@ export default function Dashboard() {
                                   taskId: null,
                                 }
                             : null;
-                        const isRunning = approvalSaving === request.id || progress?.status === 'running' || linkedRepairJob?.status === 'running';
+                        const isRunning = approvalSaving === request.id || progress?.status === 'running' || linkedRepairJob?.status === 'running' || linkedRepairJob?.status === 'queued';
                         return (
                           <article className={`approval-card ${request.severity}`} key={request.id}>
                             <div>
@@ -1619,6 +1625,8 @@ export default function Dashboard() {
                                   ))}
                                 </div>
                                 {visibleProgress.status === 'completed' && <div className="repair-complete-message">התיקון הושלם בהצלחה</div>}
+                                {visibleProgress.status === 'blocked' && <div className="repair-blocked-message">התהליך נעצר כי חסרה הרשאה או הגדרה חיצונית. הלוג למעלה מפרט בדיוק מה צריך להשלים כדי להמשיך.</div>}
+                                {visibleProgress.status === 'failed' && <div className="repair-blocked-message">התיקון נכשל בבדיקה. הלוג למעלה מציג את מקור התקלה האחרון שנמצא.</div>}
                               </div>
                             )}
                           </article>
@@ -1656,7 +1664,7 @@ export default function Dashboard() {
                             </div>
                             <p>{job.prompt}</p>
                             <div className="repair-log">
-                              {logs.slice(0, 5).map((entry, index) => (
+                              {logs.slice(0, 10).map((entry, index) => (
                                 <small className={entry.level} key={`${job.id}-${index}`}>
                                   {new Date(entry.at).toLocaleString('he-IL')} · {entry.text}
                                 </small>
