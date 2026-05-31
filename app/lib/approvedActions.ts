@@ -6,12 +6,43 @@ type ApprovalRow = {
   payload?: Record<string, unknown> | null;
 };
 
+function approvalPayload(request: ApprovalRow): Record<string, unknown> {
+  const value = request.payload || {};
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
+  }
+  return value;
+}
+
+function monitorPermissionMessage(payload: Record<string, unknown>) {
+  const key = String(payload.key || "");
+  const title = String(payload.title || "");
+  const detail = String(payload.detail || "");
+  const recommendedAction = String(payload.recommendedAction || "");
+  const text = `${key} ${title} ${detail} ${recommendedAction}`;
+  const envName =
+    text.includes("VERCEL_MONITOR_TOKEN") ? "VERCEL_MONITOR_TOKEN" :
+    text.includes("GITHUB_MONITOR_TOKEN") ? "GITHUB_MONITOR_TOKEN" :
+    text.includes("AIVEN_MONITOR_TOKEN") ? "AIVEN_MONITOR_TOKEN" :
+    text.includes("RESEND_API_KEY") ? "RESEND_API_KEY" :
+    text.includes("GEMINI_API_KEY") ? "GEMINI_API_KEY" :
+    "";
+
+  if (!envName) return "";
+  return `זוהתה סיבת הבעיה: חסר משתנה סביבה בשם ${envName}. זה לא באג בקוד שהמערכת יכולה לתקן לבד, כי הערך הוא סוד חיצוני שצריך להוסיף ב-Vercel. האישור נשמר, ולאחר שתוסיף את המשתנה ותעשה Redeploy הבדיקה אמורה להפוך לירוקה.`;
+}
+
 export async function executeApprovedAction(pool: Pool, request: ApprovalRow) {
   const actionKey = String(request.action_key || "");
-  const payload = request.payload || {};
+  const payload = approvalPayload(request);
 
   if (actionKey === "approval:review_only") {
-    return "No automated action was executed. Approval was recorded for manual follow-up.";
+    return monitorPermissionMessage(payload) || "האישור נשמר למעקב. הבקשה הזו אינה כוללת פעולה אוטומטית בטוחה, ולכן לא בוצע שינוי קוד או שינוי הרשאות.";
   }
 
   if (actionKey === "site_control:disable_manual") {
