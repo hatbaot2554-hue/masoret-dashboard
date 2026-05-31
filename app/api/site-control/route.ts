@@ -30,11 +30,43 @@ function parseSchedules(value: SiteControlRow['shabbat_schedules']): ShabbatWind
   }
 }
 
+function timezoneOffsetMs(timeZone: string, date: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    timeZoneName: 'shortOffset',
+  }).formatToParts(date);
+  const value = parts.find((part) => part.type === 'timeZoneName')?.value || 'GMT';
+  const match = value.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/);
+  if (!match) return 0;
+  const sign = match[1] === '-' ? -1 : 1;
+  const hours = Number(match[2] || 0);
+  const minutes = Number(match[3] || 0);
+  return sign * (hours * 60 + minutes) * 60000;
+}
+
+function parseControlDate(value?: string | null) {
+  if (!value) return null;
+  const text = String(value);
+  const hasExplicitZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text);
+  if (hasExplicitZone) {
+    const date = new Date(text);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!match) {
+    const date = new Date(text);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+  const [, year, month, day, hour, minute] = match;
+  const utcGuess = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)));
+  return new Date(utcGuess.getTime() - timezoneOffsetMs('Asia/Jerusalem', utcGuess));
+}
+
 function activeSchedule(schedules: ShabbatWindow[], now = new Date()) {
   return schedules.find((item) => {
-    const start = new Date(item.startsAt);
-    const end = new Date(item.endsAt);
-    return Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && start <= now && now < end;
+    const start = parseControlDate(item.startsAt);
+    const end = parseControlDate(item.endsAt);
+    return Boolean(start && end && start <= now && now < end);
   });
 }
 
@@ -60,7 +92,7 @@ async function ensureSiteControl() {
 function publicState(row: SiteControlRow) {
   const schedules = parseSchedules(row.shabbat_schedules);
   const shabbat = activeSchedule(schedules);
-  const manualUntil = row.manual_until ? new Date(row.manual_until) : null;
+  const manualUntil = parseControlDate(row.manual_until);
   const manualActive = Boolean(row.manual_enabled && (!manualUntil || manualUntil > new Date()));
   const active = Boolean(shabbat || manualActive);
 
