@@ -905,6 +905,136 @@ button:disabled {
   color: #b42318;
 }
 
+.approval-assistant-panel {
+  grid-column: 1 / -1;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.approval-assistant-head {
+  display: grid;
+  gap: 3px;
+}
+
+.approval-assistant-head strong {
+  color: #0f172a;
+}
+
+.approval-assistant-head span {
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.approval-chat-log {
+  display: grid;
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+.approval-chat-message {
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 5px;
+  max-width: 92%;
+}
+
+.approval-chat-message.user {
+  justify-self: end;
+  background: #e8f1ff;
+}
+
+.approval-chat-message.assistant {
+  justify-self: start;
+  background: #f1f5f9;
+}
+
+.approval-chat-message span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.approval-chat-message p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.approval-chat-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.approval-chat-images img {
+  width: 84px;
+  height: 84px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+}
+
+.approval-chat-images.pending {
+  padding: 6px;
+  border: 1px dashed #94a3b8;
+  border-radius: 6px;
+}
+
+.approval-assistant-panel textarea {
+  width: 100%;
+  min-height: 54px;
+  resize: vertical;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  padding: 9px 10px;
+}
+
+.approval-chat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.approval-chat-actions label {
+  cursor: pointer;
+  color: var(--blue);
+  font-weight: 700;
+  border: 1px solid #b6c2d1;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.approval-chat-actions input {
+  display: none;
+}
+
+.approval-chat-actions button {
+  background: var(--blue);
+  border: 0;
+  color: #fff;
+  border-radius: 6px;
+  min-height: 38px;
+  padding: 0 14px;
+  font-weight: 700;
+}
+
+.approval-chat-actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .coupon-create-grid {
   display: grid;
   gap: 10px;
