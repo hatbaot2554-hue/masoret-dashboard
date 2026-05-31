@@ -60,6 +60,43 @@ function monitorCheck(input: MonitorCheck): MonitorCheck {
   return input;
 }
 
+function secretSetupSteps(secret: string): string[] {
+  const commonVercelSteps = [
+    "פתח את Vercel > הפרויקט masoret-dashboard > Settings > Environment Variables.",
+    `הוסף משתנה בשם ${secret} בסביבות Production וגם Preview אם רוצים בדיקות לפני פרסום.`,
+    "שמור את המשתנה ולחץ Redeploy לפריסה האחרונה, כי Vercel לא טוען סודות חדשים בלי פריסה מחדש.",
+    "אחרי שהפריסה הסתיימה, חזור ללשונית בריאות האתר ולחץ רענון נתונים.",
+  ];
+
+  if (secret === "GEMINI_API_KEY") {
+    return [
+      "פתח את Google AI Studio וצור API key לפרויקט שמותר להשתמש בו לשירות לקוחות AI.",
+      ...commonVercelSteps,
+      "אם Gemini מיועד רק לאתר הלקוחות ולא ללוח הבקרה, אפשר להשאיר את האזהרה כמידע; אם רוצים ניטור מלא בלוח הבקרה, צריך להגדיר אותו גם כאן.",
+    ];
+  }
+
+  if (secret === "VERCEL_MONITOR_TOKEN") {
+    return [
+      "פתח את Vercel > Account Settings > Tokens וצור טוקן חדש עם הרשאות קריאה בלבד ככל האפשר.",
+      "תן לטוקן שם ברור כמו masoret-dashboard-monitor ושמור את הערך פעם אחת במקום בטוח.",
+      ...commonVercelSteps,
+      "לאחר מכן המערכת תוכל לבדוק פריסות, לוגים בסיסיים והגדרות סביבה בלי לבקש ממך להיכנס ידנית בכל פעם.",
+    ];
+  }
+
+  if (secret === "AIVEN_MONITOR_TOKEN") {
+    return [
+      "פתח את Aiven Console > User information או Account settings > Authentication tokens.",
+      "צור token חדש עם הרשאות קריאה/ניטור בלבד אם האפשרות קיימת, בלי הרשאות מחיקה או שינוי שירותים.",
+      ...commonVercelSteps,
+      "לאחר מכן המערכת תוכל לבדוק מצב שירות, זמינות, גיבויים ומשאבים בלי לחשוף את סיסמת מסד הנתונים.",
+    ];
+  }
+
+  return commonVercelSteps;
+}
+
 function dedupeMonitorChecks(checks: MonitorCheck[]) {
   const seen = new Set<string>();
   return checks.filter((item) => {
@@ -857,8 +894,12 @@ async function checkGemini(): Promise<MonitorCheck> {
       area: "AI ושירות לקוחות",
       status: "warning",
       detail: "לא מוגדר GEMINI_API_KEY בלוח הבקרה.",
-      recommendedAction: "הגדר GEMINI_API_KEY כדי לבדוק ולתפעל את שירות הלקוחות AI.",
+      recommendedAction: "הגדר GEMINI_API_KEY בלוח הבקרה כדי שהמוניטור יוכל לבדוק את שירות הלקוחות AI. אם Gemini מוגדר רק באתר הלקוחות, האתר יכול לעבוד אבל הכיסוי בלוח הבקרה חלקי.",
       severity: "local",
+      payload: {
+        secret: "GEMINI_API_KEY",
+        setupSteps: secretSetupSteps("GEMINI_API_KEY"),
+      },
     });
   }
 
@@ -965,6 +1006,12 @@ function checkExternalAccessCoverage(): MonitorCheck[] {
         : `ההרשאה ${item.env} עדיין לא מוגדרת, ולכן הכיסוי בתחום זה חלקי.`,
       recommendedAction: configuredEnv ? undefined : item.action,
       severity: configuredEnv ? undefined : "security",
+      payload: configuredEnv
+        ? undefined
+        : {
+            secret: item.env,
+            setupSteps: secretSetupSteps(item.env),
+          },
     });
   });
 }
