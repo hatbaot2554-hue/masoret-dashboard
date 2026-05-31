@@ -6,6 +6,8 @@ const jobId = process.env.REPAIR_JOB_ID;
 const prompt = process.env.REPAIR_PROMPT || '';
 const dashboardUrl = (process.env.DASHBOARD_URL || '').replace(/\/$/, '');
 const automationSecret = process.env.AUTOMATION_API_SECRET || '';
+const repository = process.env.GITHUB_REPOSITORY || 'hatbaot2554-hue/masoret-dashboard';
+const runId = process.env.GITHUB_RUN_ID || '';
 const workDir = join(process.cwd(), '.repair-workspace');
 
 async function postLog(text, level = 'info', status = 'running', result = '') {
@@ -43,7 +45,7 @@ async function runCheck(name, command, cwd, timeout = 180000) {
     return { name, ok: true, output: output.slice(-3000) };
   } catch (error) {
     const detail = `${error.stdout || ''}\n${error.stderr || ''}`.trim().slice(-3000);
-    await postLog(`הבדיקה "${name}" נכשלה. בודק את הפלט כדי להבין את מקור התקלה.`, 'error');
+    await postLog(`הבדיקה "${name}" נכשלה. אני קורא את הפלט כדי לבודד את מקור התקלה.`, 'error');
     if (detail) await postLog(`פלט אחרון מהבדיקה "${name}": ${detail}`, 'error');
     return { name, ok: false, output: detail || error.message };
   }
@@ -62,8 +64,8 @@ async function cloneRepo(repo) {
     run(`git clone --depth=1 ${cloneUrl(repo)} "${target}"`, { cwd: workDir, timeout: 180000 });
     await postLog(`המאגר ${repo} נטען בהצלחה.`, 'success');
     return target;
-  } catch (error) {
-    await postLog(`לא הצלחתי לטעון את המאגר ${repo}. ייתכן שחסרה הרשאת GitHub מתאימה.`, 'error');
+  } catch {
+    await postLog(`לא הצלחתי לטעון את המאגר ${repo}. בדרך כלל זה אומר שחסרה הרשאת GitHub מתאימה לרץ התיקונים.`, 'error');
     return '';
   }
 }
@@ -79,11 +81,30 @@ function promptDiagnosis() {
   return areas.length ? areas.join(', ') : 'בדיקה כללית של האתר ולוח הבקרה';
 }
 
+function diagnosisFromFailures(failed) {
+  if (failed.some((item) => /clone|repository|permission|Authentication/i.test(item.output))) {
+    return 'נראה שחסרה הרשאת GitHub שמאפשרת לרץ לקרוא את כל המאגרים הרלוונטיים.';
+  }
+  if (failed.some((item) => /DATABASE_URL|password authentication|self-signed|sslmode|ECONNREFUSED/i.test(item.output))) {
+    return 'נראה שהבעיה קשורה לחיבור למסד הנתונים או להגדרת SSL/סביבת מסד.';
+  }
+  if (failed.some((item) => /Type error|TS\d+|eslint|Failed to compile/i.test(item.output))) {
+    return 'נראה שהבעיה נמצאת בקוד עצמו: שגיאת TypeScript, build או lint.';
+  }
+  if (failed.some((item) => /npm ERR|dependency|package-lock/i.test(item.output))) {
+    return 'נראה שהבעיה קשורה להתקנת תלויות או התאמה בין package.json לבין package-lock.';
+  }
+  return 'נמצא כשל, אבל צריך כלל תיקון ספציפי או מנוע AI מחובר כדי להפוך את האבחון לשינוי קוד אוטומטי.';
+}
+
 async function main() {
   if (!jobId) throw new Error('Missing REPAIR_JOB_ID');
   mkdirSync(workDir, { recursive: true });
 
   await postLog('רץ התיקונים החינמי התחיל לעבוד בתוך GitHub Actions.', 'success', 'running');
+  if (runId) {
+    await postLog(`אפשר לראות גם את הרצת GitHub המלאה כאן: https://github.com/${repository}/actions/runs/${runId}`, 'info', 'running');
+  }
   await postLog(`קורא את הבקשה שלך ומנסה להבין איפה הבעיה: ${prompt.slice(0, 500) || 'לא נכתב פירוט.'}`, 'info');
   await postLog(`אזורי מערכת חשודים לפי הבקשה: ${promptDiagnosis()}.`, 'info');
 
@@ -109,16 +130,18 @@ async function main() {
     `Prompt: ${prompt}`,
     '',
     ...results.map((item) => `- ${item.ok ? 'OK' : 'FAILED'}: ${item.name}`),
+    '',
+    failed.length ? `Diagnosis: ${diagnosisFromFailures(failed)}` : 'Diagnosis: all baseline checks passed.',
   ].join('\n');
   writeFileSync(join(workDir, 'repair-report.txt'), report, 'utf8');
 
   if (failed.length) {
-    await postLog(`נמצאו ${failed.length} בדיקות שנכשלו. בשלב זה הרץ החינמי מבודד את מקור הבעיה ומציג לוג, אבל לא מבצע שינויי קוד אוטומטיים בלי כלל תיקון מוגדר מראש.`, 'warning', 'blocked', report);
-    await postLog('כדי להפוך כשל כזה לתיקון אוטומטי, צריך להוסיף כלל תיקון ספציפי או לחבר מנוע AI בתשלום/חיצוני שמותר לו לערוך קוד.', 'warning', 'blocked');
+    await postLog(`נמצאו ${failed.length} בדיקות שנכשלו. האבחון המרכזי: ${diagnosisFromFailures(failed)}`, 'warning', 'blocked', report);
+    await postLog('בגרסה החינמית הזו הרץ יודע לבדוק, לבודד מקור בעיה ולדווח בזמן אמת. כדי שהוא ישנה קוד לבד צריך להוסיף כלל תיקון מוגדר מראש או לחבר מנוע AI עם הרשאת עריכת קוד.', 'warning', 'blocked');
     return;
   }
 
-  await postLog('כל הבדיקות הבסיסיות הסתיימו בהצלחה. לא נמצא כשל build/תחביר במאגרים שנבדקו.', 'success', 'completed', report);
+  await postLog('כל בדיקות הבסיס הסתיימו בהצלחה. לא נמצא כשל build או תחביר במאגרים שנבדקו.', 'success', 'completed', report);
 }
 
 main().catch(async (error) => {
