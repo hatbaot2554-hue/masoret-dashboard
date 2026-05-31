@@ -692,9 +692,19 @@ button:disabled {
   background: #ffffff;
   border: 1px solid #e3e9f1;
   border-radius: 8px;
-  max-height: 220px;
+  max-height: 320px;
   overflow: auto;
   padding: 10px;
+}
+
+.repair-log.inline-live small {
+  border-bottom: 1px solid #eef2f6;
+  line-height: 1.65;
+  padding: 7px 4px;
+}
+
+.repair-log.inline-live small:last-child {
+  border-bottom: 0;
 }
 
 .repair-complete-message {
