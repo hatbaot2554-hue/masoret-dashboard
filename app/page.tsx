@@ -377,6 +377,21 @@ function missingExternalSecret(request: ApprovalRequest) {
   return '';
 }
 
+function approvalCanRunAutomatically(request: ApprovalRequest) {
+  return Boolean(repairJobIdFromAction(request.action_key));
+}
+
+function approvalBlockerText(request: ApprovalRequest) {
+  const secret = missingExternalSecret(request);
+  if (secret) {
+    return `המערכת לא יכולה להשלים את זה לבד כי חסר מפתח/הרשאה חיצונית בשם ${secret}. צריך להגדיר אותו מחוץ לאתר, ואז להריץ שוב בדיקה.`;
+  }
+  if (request.action_key === 'approval:review_only') {
+    return 'זו בדיקת בריאות שמצריכה טיפול או הגדרה, אבל היא לא משימת תיקון קוד. לכן אישור כאן לא יגרום ל-AI לערוך קבצים.';
+  }
+  return '';
+}
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function approvalDiagnosisLogs(request: ApprovalRequest, status: ApprovalProgress['status'] = 'running', extra?: string): RepairJobLog[] {
   const now = Date.now();
@@ -1571,6 +1586,8 @@ export default function Dashboard() {
                         const linkedRepairJob = repairId ? repairJobs.find((job) => job.id === repairId) : null;
                         const linkedRepairLogs = linkedRepairJob ? parseRepairLogs(linkedRepairJob.logs) : [];
                         const progress = approvalProgress[request.id];
+                        const blockerText = approvalBlockerText(request);
+                        const canRunAutomatically = approvalCanRunAutomatically(request);
                         const visibleProgress = linkedRepairJob
                           ? { status: linkedRepairJob.status, logs: linkedRepairLogs, title: repairStatusLabel(linkedRepairJob.status), taskId: linkedRepairJob.id }
                           : progress
@@ -1596,11 +1613,16 @@ export default function Dashboard() {
                               <span className={`approval-status ${isRunning ? 'running' : request.status}`}>{isRunning ? 'בתהליך תיקון' : request.status === 'pending' ? 'ממתין לאישור' : request.status === 'approved' ? 'אושר' : request.status === 'rejected' ? 'נדחה' : 'בוצע'}</span>
                               {request.status === 'pending' && (
                                 <>
-                                  <button type="button" disabled={approvalSaving === request.id} onClick={() => decideApprovalRequest(request.id, 'approved')}>אשר תיקון</button>
+                                  <button type="button" disabled={approvalSaving === request.id || !canRunAutomatically} onClick={() => decideApprovalRequest(request.id, 'approved')}>
+                                    {canRunAutomatically ? 'אשר תיקון' : 'דורש הגדרה חיצונית'}
+                                  </button>
                                   <button type="button" disabled={approvalSaving === request.id} onClick={() => decideApprovalRequest(request.id, 'rejected')}>דחה</button>
                                 </>
                               )}
                             </div>
+                            {blockerText && !canRunAutomatically && (
+                              <div className="approval-blocker-note">{blockerText}</div>
+                            )}
                             {visibleProgress && (
                               <div className={`approval-repair-panel ${visibleProgress.status}`}>
                                 <div className="approval-repair-head">
