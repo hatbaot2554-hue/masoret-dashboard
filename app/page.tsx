@@ -378,6 +378,50 @@ function missingExternalSecret(request: ApprovalRequest) {
   return '';
 }
 
+function approvalSetupSteps(request: ApprovalRequest) {
+  const payload = parseApprovalPayload(request.payload);
+  const nestedPayload = parseApprovalPayload(payload.payload as ApprovalRequest['payload']);
+  const steps = payload.setupSteps || nestedPayload.setupSteps;
+  if (Array.isArray(steps)) return steps.map((step) => String(step)).filter(Boolean);
+
+  const secret = missingExternalSecret(request);
+  if (!secret) return [];
+
+  const common = [
+    'פתח את Vercel ואת הפרויקט של לוח הבקרה masoret-dashboard.',
+    'היכנס ל-Settings ואז Environment Variables.',
+    `הוסף משתנה חדש בשם ${secret} והדבק את הערך הסודי שקיבלת מהשירות החיצוני.`,
+    'שמור את המשתנה ובצע Redeploy לפריסה האחרונה.',
+    'חזור ללשונית בריאות האתר ולחץ רענון נתונים כדי שהמערכת תוודא שהחיבור עובד.',
+  ];
+
+  if (secret === 'GEMINI_API_KEY') {
+    return [
+      'צור מפתח Gemini ב-Google AI Studio עבור שירות הלקוחות AI.',
+      ...common,
+      'אם Gemini כבר מוגדר באתר הלקוחות, עדיין צריך להגדיר אותו גם בלוח הבקרה כדי שהמוניטור יוכל לבדוק אותו מכאן.',
+    ];
+  }
+
+  if (secret === 'VERCEL_MONITOR_TOKEN') {
+    return [
+      'צור Token חדש ב-Vercel עם הרשאות קריאה ככל האפשר, בשם ברור כמו masoret-dashboard-monitor.',
+      ...common,
+      'אחרי ההגדרה המערכת תוכל לבדוק פריסות, לוגים והגדרות בלי שתצטרך להיכנס ידנית.',
+    ];
+  }
+
+  if (secret === 'AIVEN_MONITOR_TOKEN') {
+    return [
+      'צור Token חדש ב-Aiven Console עם הרשאות קריאה/ניטור בלבד אם האפשרות קיימת.',
+      ...common,
+      'אחרי ההגדרה המערכת תוכל לבדוק זמינות, גיבויים ומשאבי מסד בלי לקבל סיסמת מסד נתונים.',
+    ];
+  }
+
+  return common;
+}
+
 function approvalCanRunAutomatically(request: ApprovalRequest) {
   return Boolean(repairJobIdFromAction(request.action_key));
 }
@@ -419,10 +463,18 @@ function approvalDiagnosisLogs(request: ApprovalRequest, status: ApprovalProgres
   ];
 
   if (secret) {
+    const steps = approvalSetupSteps(request);
     logs.unshift({
       at: new Date(now - 1000).toISOString(),
       level: status === 'failed' ? 'error' : 'warning',
       text: `מקור הבעיה נמצא: חסר משתנה סביבה חיצוני בשם ${secret}. בלי הערך הסודי הזה המערכת לא יכולה להתחבר לשירות הרלוונטי ולכן לא יכולה להשלים את התיקון לבד.`,
+    });
+    steps.slice(0, 6).reverse().forEach((step, index) => {
+      logs.unshift({
+        at: new Date(now - 700 + index).toISOString(),
+        level: 'info',
+        text: `הנחיה ${index + 1}: ${step}`,
+      });
     });
     logs.unshift({
       at: new Date(now).toISOString(),
@@ -1599,6 +1651,7 @@ export default function Dashboard() {
                         const linkedRepairLogs = linkedRepairJob ? parseRepairLogs(linkedRepairJob.logs) : [];
                         const progress = approvalProgress[request.id];
                         const blockerText = approvalBlockerText(request);
+                        const setupSteps = approvalSetupSteps(request);
                         const canRunAutomatically = approvalCanRunAutomatically(request);
                         const visibleProgress = linkedRepairJob
                           ? { status: linkedRepairJob.status, logs: linkedRepairLogs, title: repairStatusLabel(linkedRepairJob.status), taskId: linkedRepairJob.id }
@@ -1633,7 +1686,16 @@ export default function Dashboard() {
                               )}
                             </div>
                             {blockerText && !canRunAutomatically && (
-                              <div className="approval-blocker-note">{blockerText}</div>
+                              <div className="approval-blocker-note">
+                                <strong>{blockerText}</strong>
+                                {setupSteps.length > 0 && (
+                                  <ol className="approval-setup-steps">
+                                    {setupSteps.map((step, index) => (
+                                      <li key={`${request.id}-setup-${index}`}>{step}</li>
+                                    ))}
+                                  </ol>
+                                )}
+                              </div>
                             )}
                             {visibleProgress && (
                               <div className={`approval-repair-panel ${visibleProgress.status}`}>
