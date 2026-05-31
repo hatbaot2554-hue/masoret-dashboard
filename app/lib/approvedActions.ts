@@ -10,6 +10,10 @@ export async function executeApprovedAction(pool: Pool, request: ApprovalRow) {
   const actionKey = String(request.action_key || "");
   const payload = request.payload || {};
 
+  if (actionKey === "approval:review_only") {
+    return "No automated action was executed. Approval was recorded for manual follow-up.";
+  }
+
   if (actionKey === "site_control:disable_manual") {
     await pool.query(`
       UPDATE site_control
