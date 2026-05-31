@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createDbPool } from '../../../lib/db';
+import { sendExternalOrderReadyEmail } from '../../../lib/orderEmails';
 
 const pool = createDbPool();
 
@@ -156,6 +157,7 @@ export async function GET(request: Request) {
       ADD COLUMN IF NOT EXISTS auto_submitted BOOLEAN DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS checkout_url TEXT,
       ADD COLUMN IF NOT EXISTS external_order_id TEXT,
+      ADD COLUMN IF NOT EXISTS external_order_email_sent_at TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
       ADD COLUMN IF NOT EXISTS admin_notes JSONB DEFAULT '[]'::jsonb
     `).catch(() => {});
@@ -186,6 +188,7 @@ export async function POST(request: Request) {
       ADD COLUMN IF NOT EXISTS auto_submitted BOOLEAN DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS checkout_url TEXT,
       ADD COLUMN IF NOT EXISTS external_order_id TEXT,
+      ADD COLUMN IF NOT EXISTS external_order_email_sent_at TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
       ADD COLUMN IF NOT EXISTS admin_notes JSONB DEFAULT '[]'::jsonb
     `).catch(() => {});
@@ -295,6 +298,12 @@ export async function PATCH(request: Request) {
         body.id
       ]
     );
+
+    if (result.rows[0]?.external_order_id) {
+      await sendExternalOrderReadyEmail(pool, result.rows[0]).catch((error) => {
+        console.error('External order email failed', error);
+      });
+    }
 
     return NextResponse.json({ order: result.rows[0] });
   } catch (error) {
