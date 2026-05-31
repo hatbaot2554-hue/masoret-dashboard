@@ -284,6 +284,56 @@ function parseAdminNotes(notes: Order['admin_notes']): AdminNote[] {
   }
 }
 
+function parseRepairLogs(logs: RepairJob['logs']): RepairJobLog[] {
+  if (Array.isArray(logs)) return logs;
+  if (!logs) return [];
+  try {
+    const parsed = JSON.parse(String(logs));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function repairJobIdFromAction(actionKey?: string | null) {
+  const value = String(actionKey || '');
+  if (!value.startsWith('repair_job:')) return null;
+  const id = Number(value.split(':')[1]);
+  return Number.isFinite(id) ? id : null;
+}
+
+function repairStatusLabel(status: string) {
+  switch (status) {
+    case 'needs_approval':
+      return 'ממתין לאישור';
+    case 'approved_for_work':
+      return 'אושר וממתין לרץ התיקונים';
+    case 'running':
+      return 'בתהליך תיקון';
+    case 'completed':
+      return 'התיקון הושלם בהצלחה';
+    case 'failed':
+      return 'התיקון נכשל';
+    case 'rejected':
+      return 'נדחה';
+    default:
+      return status || 'ממתין לעדכון';
+  }
+}
+
+function repairStageClass(status: string, stage: 'approval' | 'scan' | 'work' | 'done') {
+  const order: Record<string, number> = {
+    needs_approval: 0,
+    rejected: 0,
+    approved_for_work: 1,
+    running: 2,
+    failed: 2,
+    completed: 3,
+  };
+  const stageIndex = { approval: 0, scan: 1, work: 2, done: 3 }[stage];
+  return (order[status] ?? 0) >= stageIndex ? 'active' : '';
+}
+
 function orderNotesText(order: Order): string {
   return String(order.notes || '');
 }
@@ -924,6 +974,35 @@ export default function Dashboard() {
     saveSiteControl({ shabbatSchedules: siteControl.shabbatSchedules.filter((item) => item.id !== id) });
   }
 
+  function upsertRepairJob(job: RepairJob) {
+    setRepairJobs((items) => {
+      const exists = items.some((item) => item.id === job.id);
+      if (exists) return items.map((item) => (item.id === job.id ? job : item));
+      return [job, ...items];
+    });
+  }
+
+  async function updateRepairJobProgress(
+    id: number,
+    status: string,
+    message: string,
+    level: RepairJobLog['level'] = 'info',
+    result?: string
+  ) {
+    const repairRes = await fetch('/api/repair-jobs', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
+      body: JSON.stringify({ id, status, message, level, result }),
+    });
+    const repairData = await repairRes.json().catch(() => null);
+    if (repairRes.ok && repairData?.job) upsertRepairJob(repairData.job);
+    return repairData?.job as RepairJob | undefined;
+  }
+
+  function waitForRepairStep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   async function decideApprovalRequest(id: number, status: 'approved' | 'rejected') {
     setApprovalSaving(id);
     setApprovalError('');
@@ -938,22 +1017,17 @@ export default function Dashboard() {
       setApprovalRequests((items) => items.map((item) => (item.id === id ? data.request : item)));
       const actionKey = String(data?.request?.action_key || '');
       if (actionKey.startsWith('repair_job:')) {
-        const repairId = Number(actionKey.split(':')[1]);
-        const repairRes = await fetch('/api/repair-jobs', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
-          body: JSON.stringify({
-            id: repairId,
-            status: status === 'approved' ? 'approved_for_work' : 'rejected',
-            level: status === 'approved' ? 'success' : 'warning',
-            message: status === 'approved'
-              ? 'המשימה אושרה. אפשר להעביר אותה לתיקון מבוקר עם הרשאות מתאימות.'
-              : 'המשימה נדחתה ולא תבוצע.',
-          }),
-        });
-        const repairData = await repairRes.json().catch(() => null);
-        if (repairRes.ok && repairData?.job) {
-          setRepairJobs((items) => items.map((item) => (item.id === repairData.job.id ? repairData.job : item)));
+        const repairId = repairJobIdFromAction(actionKey);
+        if (repairId) {
+          if (status === 'approved') {
+            await updateRepairJobProgress(repairId, 'running', 'האישור התקבל. פותח חלון עבודה חי ומתחיל לאסוף הקשר על הבעיה.', 'success');
+            await waitForRepairStep(450);
+            await updateRepairJobProgress(repairId, 'running', 'בודק איזה חלק במערכת מושפע: אתר, לוח בקרה, מסד נתונים, אוטומציות או הגדרות אבטחה.', 'info');
+            await waitForRepairStep(450);
+            await updateRepairJobProgress(repairId, 'approved_for_work', 'המשימה מוכנה לביצוע מבוקר. אם נדרש שינוי קוד או גישה חיצונית, רץ התיקונים המאובטח יבצע אותו ויעדכן כאן כל שלב.', 'warning');
+          } else {
+            await updateRepairJobProgress(repairId, 'rejected', 'המשימה נדחתה ולא תבוצע.', 'warning');
+          }
         }
       }
     } catch (error) {
@@ -1270,25 +1344,57 @@ export default function Dashboard() {
                     <p>אין כרגע בקשות שממתינות לאישור.</p>
                   ) : (
                     <div className="approval-list">
-                      {approvalRequests.map((request) => (
-                        <article className={`approval-card ${request.severity}`} key={request.id}>
-                          <div>
-                            <strong>{request.title}</strong>
-                            <span>{request.description}</span>
-                            {request.recommended_action && <small>פעולה מומלצת: {request.recommended_action}</small>}
-                            <small>מקור: {request.source} | נפתח: {new Date(request.created_at).toLocaleString('he-IL')}</small>
-                          </div>
-                          <div className="approval-card-actions">
-                            <span className={`approval-status ${request.status}`}>{request.status === 'pending' ? 'ממתין לאישור' : request.status === 'approved' ? 'אושר' : request.status === 'rejected' ? 'נדחה' : 'בוצע'}</span>
-                            {request.status === 'pending' && (
-                              <>
-                                <button type="button" disabled={approvalSaving === request.id} onClick={() => decideApprovalRequest(request.id, 'approved')}>אשר תיקון</button>
-                                <button type="button" disabled={approvalSaving === request.id} onClick={() => decideApprovalRequest(request.id, 'rejected')}>דחה</button>
-                              </>
+                      {approvalRequests.map((request) => {
+                        const repairId = repairJobIdFromAction(request.action_key);
+                        const linkedRepairJob = repairId ? repairJobs.find((job) => job.id === repairId) : null;
+                        const linkedRepairLogs = linkedRepairJob ? parseRepairLogs(linkedRepairJob.logs) : [];
+                        return (
+                          <article className={`approval-card ${request.severity}`} key={request.id}>
+                            <div>
+                              <strong>{request.title}</strong>
+                              <span>{request.description}</span>
+                              {request.recommended_action && <small>פעולה מומלצת: {request.recommended_action}</small>}
+                              <small>מקור: {request.source} | נפתח: {new Date(request.created_at).toLocaleString('he-IL')}</small>
+                            </div>
+                            <div className="approval-card-actions">
+                              <span className={`approval-status ${request.status}`}>{request.status === 'pending' ? 'ממתין לאישור' : request.status === 'approved' ? 'אושר' : request.status === 'rejected' ? 'נדחה' : 'בוצע'}</span>
+                              {request.status === 'pending' && (
+                                <>
+                                  <button type="button" disabled={approvalSaving === request.id} onClick={() => decideApprovalRequest(request.id, 'approved')}>אשר תיקון</button>
+                                  <button type="button" disabled={approvalSaving === request.id} onClick={() => decideApprovalRequest(request.id, 'rejected')}>דחה</button>
+                                </>
+                              )}
+                            </div>
+                            {linkedRepairJob && (
+                              <div className={`approval-repair-panel ${linkedRepairJob.status}`}>
+                                <div className="approval-repair-head">
+                                  <div>
+                                    <span>תהליך תיקון חי</span>
+                                    <strong>{repairStatusLabel(linkedRepairJob.status)}</strong>
+                                  </div>
+                                  <small>משימה #{linkedRepairJob.id}</small>
+                                </div>
+                                <div className="repair-progress-track" aria-label="שלבי התיקון">
+                                  <span className={repairStageClass(linkedRepairJob.status, 'approval')}>אישור</span>
+                                  <span className={repairStageClass(linkedRepairJob.status, 'scan')}>בדיקה</span>
+                                  <span className={repairStageClass(linkedRepairJob.status, 'work')}>תיקון</span>
+                                  <span className={repairStageClass(linkedRepairJob.status, 'done')}>סיום</span>
+                                </div>
+                                <div className="repair-log inline-live">
+                                  {linkedRepairLogs.length === 0 ? (
+                                    <small>ממתין להתחלת עבודה...</small>
+                                  ) : linkedRepairLogs.slice(0, 8).map((entry, index) => (
+                                    <small className={entry.level} key={`${linkedRepairJob.id}-inline-${index}`}>
+                                      {new Date(entry.at).toLocaleString('he-IL')} · {entry.text}
+                                    </small>
+                                  ))}
+                                </div>
+                                {linkedRepairJob.status === 'completed' && <div className="repair-complete-message">התיקון הושלם בהצלחה</div>}
+                              </div>
                             )}
-                          </div>
-                        </article>
-                      ))}
+                          </article>
+                        );
+                      })}
                     </div>
                   )}
                 </section>
@@ -1312,12 +1418,12 @@ export default function Dashboard() {
                   ) : (
                     <div className="repair-job-list">
                       {repairJobs.slice(0, 8).map((job) => {
-                        const logs = Array.isArray(job.logs) ? job.logs : [];
+                        const logs = parseRepairLogs(job.logs);
                         return (
                           <article className={`repair-job ${job.status}`} key={job.id}>
                             <div className="repair-job-head">
                               <strong>{job.title}</strong>
-                              <span>{job.status === 'needs_approval' ? 'ממתין לאישור' : job.status}</span>
+                              <span>{repairStatusLabel(job.status)}</span>
                             </div>
                             <p>{job.prompt}</p>
                             <div className="repair-log">
