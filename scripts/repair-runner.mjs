@@ -8,6 +8,9 @@ const dashboardUrl = (process.env.DASHBOARD_URL || '').replace(/\/$/, '');
 const automationSecret = process.env.AUTOMATION_API_SECRET || '';
 const repository = process.env.GITHUB_REPOSITORY || 'hatbaot2554-hue/masoret-dashboard';
 const runId = process.env.GITHUB_RUN_ID || '';
+const openAiKey = process.env.OPENAI_API_KEY || '';
+const openAiModel = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+const aiRepairMode = process.env.AI_REPAIR_MODE || 'advice';
 const workDir = join(process.cwd(), '.repair-workspace');
 
 async function postLog(text, level = 'info', status = 'running', result = '') {
@@ -97,6 +100,90 @@ function diagnosisFromFailures(failed) {
   return 'נמצא כשל, אבל צריך כלל תיקון ספציפי או מנוע AI מחובר כדי להפוך את האבחון לשינוי קוד אוטומטי.';
 }
 
+function responseText(data) {
+  if (typeof data?.output_text === 'string') return data.output_text.trim();
+  const parts = [];
+  for (const item of data?.output || []) {
+    for (const content of item?.content || []) {
+      if (content?.text) parts.push(content.text);
+    }
+  }
+  return parts.join('\n').trim();
+}
+
+function compactResults(results) {
+  return results.map((item) => ({
+    name: item.name,
+    ok: item.ok,
+    output: String(item.output || '').slice(-1800),
+  }));
+}
+
+async function askOpenAi(results, failed) {
+  if (!openAiKey) {
+    await postLog('מנוע OpenAI עדיין לא מחובר לרץ התיקונים. כדי להפעיל אותו צריך להוסיף OPENAI_API_KEY ב-GitHub Secrets של masoret-dashboard.', 'warning', failed.length ? 'blocked' : 'running');
+    return '';
+  }
+
+  await postLog(`מפעיל מנוע AI של OpenAI לניתוח עמוק של הבקשה והבדיקות. מצב עבודה: ${aiRepairMode}.`, 'info', 'running');
+  const input = [
+    {
+      role: 'system',
+      content: [
+        {
+          type: 'input_text',
+          text: 'אתה מנוע אבחון ותיקון לאתר מסחר ולוח בקרה. ענה בעברית פשוטה. אל תחשוף סודות. נתח לוגים, אתר מקור בעיה, ותן צעדי תיקון מדויקים. אם חסרה הרשאה או סוד, כתוב בדיוק מה חסר. אם אפשר לתקן בקוד, הצע קבצים ואזורים לשינוי. אל תמציא שהפעלת תיקון אם לא בוצע בפועל.',
+        },
+      ],
+    },
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'input_text',
+          text: JSON.stringify({
+            repairRequest: prompt,
+            mode: aiRepairMode,
+            baselineDiagnosis: failed.length ? diagnosisFromFailures(failed) : 'all baseline checks passed',
+            results: compactResults(results),
+          }, null, 2),
+        },
+      ],
+    },
+  ];
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${openAiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: openAiModel,
+        input,
+        max_output_tokens: 1200,
+      }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      const detail = data?.error?.message || `OpenAI status ${response.status}`;
+      await postLog(`OpenAI לא הצליח לנתח את התקלה: ${detail}`, 'error', failed.length ? 'blocked' : 'running');
+      return '';
+    }
+    const text = responseText(data);
+    if (text) {
+      await postLog(`ניתוח AI: ${text.slice(0, 1800)}`, failed.length ? 'warning' : 'success', failed.length ? 'blocked' : 'running');
+      return text;
+    }
+    await postLog('OpenAI החזיר תשובה ריקה, לכן נשארים עם האבחון הטכני הרגיל.', 'warning', failed.length ? 'blocked' : 'running');
+    return '';
+  } catch (error) {
+    await postLog(`לא הצלחתי להתחבר ל-OpenAI: ${error instanceof Error ? error.message : String(error)}`, 'error', failed.length ? 'blocked' : 'running');
+    return '';
+  }
+}
+
 async function main() {
   if (!jobId) throw new Error('Missing REPAIR_JOB_ID');
   mkdirSync(workDir, { recursive: true });
@@ -125,6 +212,7 @@ async function main() {
   }
 
   const failed = results.filter((item) => !item.ok);
+  const aiAnalysis = await askOpenAi(results, failed);
   const report = [
     `Repair job #${jobId}`,
     `Prompt: ${prompt}`,
@@ -132,12 +220,14 @@ async function main() {
     ...results.map((item) => `- ${item.ok ? 'OK' : 'FAILED'}: ${item.name}`),
     '',
     failed.length ? `Diagnosis: ${diagnosisFromFailures(failed)}` : 'Diagnosis: all baseline checks passed.',
+    '',
+    aiAnalysis ? `AI analysis:\n${aiAnalysis}` : 'AI analysis: not available.',
   ].join('\n');
   writeFileSync(join(workDir, 'repair-report.txt'), report, 'utf8');
 
   if (failed.length) {
     await postLog(`נמצאו ${failed.length} בדיקות שנכשלו. האבחון המרכזי: ${diagnosisFromFailures(failed)}`, 'warning', 'blocked', report);
-    await postLog('בגרסה החינמית הזו הרץ יודע לבדוק, לבודד מקור בעיה ולדווח בזמן אמת. כדי שהוא ישנה קוד לבד צריך להוסיף כלל תיקון מוגדר מראש או לחבר מנוע AI עם הרשאת עריכת קוד.', 'warning', 'blocked');
+    await postLog(openAiKey ? 'מנוע AI מחובר ונתן אבחון. השלב הבא הוא להוסיף מצב תיקון קוד מבוקר, שבו ה-AI יכין patch ויפתח אותו לאישור/פרסום.' : 'בגרסה הזו הרץ יודע לבדוק ולדווח. כדי שהוא ינתח כמו AI צריך להגדיר OPENAI_API_KEY ב-GitHub Secrets.', 'warning', 'blocked');
     return;
   }
 
