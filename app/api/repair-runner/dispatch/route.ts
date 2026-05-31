@@ -73,11 +73,11 @@ export async function POST(request: Request) {
     const job = await pool.query(`SELECT id, title, prompt FROM repair_jobs WHERE id = $1 LIMIT 1`, [id]);
     if (!job.rows[0]) return NextResponse.json({ error: 'משימת התיקון לא נמצאה' }, { status: 404 });
 
-    const token = process.env.GITHUB_REPAIR_TOKEN || process.env.GITHUB_MONITOR_TOKEN;
+    const token = process.env.REPAIR_GITHUB_TOKEN || process.env.GITHUB_REPAIR_TOKEN || process.env.GITHUB_MONITOR_TOKEN;
     const automationSecret = process.env.AUTOMATION_API_SECRET;
     if (!token || !automationSecret) {
       const missing = [
-        !token ? 'GITHUB_REPAIR_TOKEN' : '',
+        !token ? 'REPAIR_GITHUB_TOKEN' : '',
         !automationSecret ? 'AUTOMATION_API_SECRET' : '',
       ].filter(Boolean).join(', ');
       await appendJobLog(
