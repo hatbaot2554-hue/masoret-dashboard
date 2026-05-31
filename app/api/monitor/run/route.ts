@@ -788,7 +788,7 @@ async function createApprovalRequests(checks: MonitorCheck[]) {
         description: item.detail,
         severity: item.severity || (item.status === "error" ? "urgent" : "local"),
         source: "internal-monitor",
-        recommendedAction: item.recommendedAction || "בדוק בלשונית בריאות האתר.",
+        recommendedAction: approvalAction.recommendedAction || "בדוק בלשונית בריאות האתר.",
         actionKey: approvalAction.actionKey,
         payload: approvalAction.payload,
         fingerprint: `internal-monitor:${item.key}:${item.status}`,
