@@ -182,6 +182,12 @@ type RepairJob = {
   updated_at: string;
 };
 
+type ApprovalProgress = {
+  status: 'running' | 'completed' | 'failed' | 'rejected';
+  logs: RepairJobLog[];
+  result?: string;
+};
+
 type AdminView = 'dashboard' | 'orders' | 'products' | 'customers' | 'coupons' | 'reports' | 'graphs' | 'settings' | 'health' | 'management';
 
 const PRODUCT_SITE_URL = 'https://masoret-website.vercel.app';
@@ -319,6 +325,13 @@ function repairStatusLabel(status: string) {
     default:
       return status || 'ממתין לעדכון';
   }
+}
+
+function approvalProgressStatusLabel(status: ApprovalProgress['status']) {
+  if (status === 'running') return 'בתהליך תיקון';
+  if (status === 'completed') return 'התיקון הושלם בהצלחה';
+  if (status === 'failed') return 'התיקון נכשל';
+  return 'נדחה';
 }
 
 function repairStageClass(status: string, stage: 'approval' | 'scan' | 'work' | 'done') {
@@ -649,6 +662,7 @@ export default function Dashboard() {
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
   const [approvalError, setApprovalError] = useState('');
   const [approvalSaving, setApprovalSaving] = useState<number | null>(null);
+  const [approvalProgress, setApprovalProgress] = useState<Record<number, ApprovalProgress>>({});
   const [repairJobs, setRepairJobs] = useState<RepairJob[]>([]);
   const [repairPrompt, setRepairPrompt] = useState('');
   const [repairError, setRepairError] = useState('');
@@ -1003,10 +1017,42 @@ export default function Dashboard() {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  function appendApprovalProgress(
+    id: number,
+    status: ApprovalProgress['status'],
+    text: string,
+    level: RepairJobLog['level'] = 'info',
+    result?: string
+  ) {
+    setApprovalProgress((current) => {
+      const previous = current[id]?.logs || [];
+      return {
+        ...current,
+        [id]: {
+          status,
+          result: result ?? current[id]?.result,
+          logs: [{ at: new Date().toISOString(), level, text }, ...previous].slice(0, 12),
+        },
+      };
+    });
+  }
+
   async function decideApprovalRequest(id: number, status: 'approved' | 'rejected') {
     setApprovalSaving(id);
     setApprovalError('');
     try {
+      appendApprovalProgress(
+        id,
+        status === 'approved' ? 'running' : 'rejected',
+        status === 'approved'
+          ? 'האישור התקבל. מתחיל תהליך תיקון ומכין בדיקת השפעה לפני פעולה.'
+          : 'הבקשה נדחתה. התיקון לא יבוצע.',
+        status === 'approved' ? 'success' : 'warning'
+      );
+      if (status === 'approved') {
+        await waitForRepairStep(350);
+        appendApprovalProgress(id, 'running', 'בודק את מקור הבעיה, את הפעולה המומלצת ואת ההרשאות שנדרשות לביצוע בטוח.');
+      }
       const res = await fetch('/api/approval-requests', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', ...dashboardAuthHeaders() },
@@ -1014,6 +1060,16 @@ export default function Dashboard() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'לא ניתן לעדכן את בקשת האישור.');
+      if (status === 'approved') {
+        appendApprovalProgress(
+          id,
+          'running',
+          data?.executionNote
+            ? `בוצעה פעולה מאושרת: ${data.executionNote}`
+            : 'האישור נשמר במערכת. ממשיך לעדכן את תהליך התיקון בלוח הבקרה.',
+          'info'
+        );
+      }
       setApprovalRequests((items) => items.map((item) => (item.id === id ? data.request : item)));
       const actionKey = String(data?.request?.action_key || '');
       if (actionKey.startsWith('repair_job:')) {
@@ -1024,13 +1080,17 @@ export default function Dashboard() {
             await waitForRepairStep(450);
             await updateRepairJobProgress(repairId, 'running', 'בודק איזה חלק במערכת מושפע: אתר, לוח בקרה, מסד נתונים, אוטומציות או הגדרות אבטחה.', 'info');
             await waitForRepairStep(450);
-            await updateRepairJobProgress(repairId, 'approved_for_work', 'המשימה מוכנה לביצוע מבוקר. אם נדרש שינוי קוד או גישה חיצונית, רץ התיקונים המאובטח יבצע אותו ויעדכן כאן כל שלב.', 'warning');
+            await updateRepairJobProgress(repairId, 'running', 'רץ התיקונים נמצא בתהליך עבודה. אם נדרש שינוי קוד או גישה חיצונית, הוא יעדכן כאן כל שלב עד לסיום.', 'warning');
           } else {
             await updateRepairJobProgress(repairId, 'rejected', 'המשימה נדחתה ולא תבוצע.', 'warning');
           }
         }
+      } else if (status === 'approved') {
+        await waitForRepairStep(450);
+        appendApprovalProgress(id, 'completed', 'התהליך הסתיים בצד לוח הבקרה. אם נדרש שינוי קוד עמוק יותר, תיפתח משימת תיקון ייעודית שתמשיך מכאן.', 'success', 'התיקון הושלם בהצלחה');
       }
     } catch (error) {
+      appendApprovalProgress(id, 'failed', error instanceof Error ? error.message : 'התיקון נכשל בזמן העדכון.', 'error');
       setApprovalError(error instanceof Error ? error.message : 'לא ניתן לעדכן את בקשת האישור.');
     } finally {
       setApprovalSaving(null);
@@ -1348,6 +1408,13 @@ export default function Dashboard() {
                         const repairId = repairJobIdFromAction(request.action_key);
                         const linkedRepairJob = repairId ? repairJobs.find((job) => job.id === repairId) : null;
                         const linkedRepairLogs = linkedRepairJob ? parseRepairLogs(linkedRepairJob.logs) : [];
+                        const progress = approvalProgress[request.id];
+                        const visibleProgress = linkedRepairJob
+                          ? { status: linkedRepairJob.status, logs: linkedRepairLogs, title: repairStatusLabel(linkedRepairJob.status), taskId: linkedRepairJob.id }
+                          : progress
+                            ? { status: progress.status, logs: progress.logs, title: approvalProgressStatusLabel(progress.status), taskId: null }
+                            : null;
+                        const isRunning = approvalSaving === request.id || progress?.status === 'running' || linkedRepairJob?.status === 'running';
                         return (
                           <article className={`approval-card ${request.severity}`} key={request.id}>
                             <div>
@@ -1357,7 +1424,7 @@ export default function Dashboard() {
                               <small>מקור: {request.source} | נפתח: {new Date(request.created_at).toLocaleString('he-IL')}</small>
                             </div>
                             <div className="approval-card-actions">
-                              <span className={`approval-status ${request.status}`}>{request.status === 'pending' ? 'ממתין לאישור' : request.status === 'approved' ? 'אושר' : request.status === 'rejected' ? 'נדחה' : 'בוצע'}</span>
+                              <span className={`approval-status ${isRunning ? 'running' : request.status}`}>{isRunning ? 'בתהליך תיקון' : request.status === 'pending' ? 'ממתין לאישור' : request.status === 'approved' ? 'אושר' : request.status === 'rejected' ? 'נדחה' : 'בוצע'}</span>
                               {request.status === 'pending' && (
                                 <>
                                   <button type="button" disabled={approvalSaving === request.id} onClick={() => decideApprovalRequest(request.id, 'approved')}>אשר תיקון</button>
@@ -1365,31 +1432,31 @@ export default function Dashboard() {
                                 </>
                               )}
                             </div>
-                            {linkedRepairJob && (
-                              <div className={`approval-repair-panel ${linkedRepairJob.status}`}>
+                            {visibleProgress && (
+                              <div className={`approval-repair-panel ${visibleProgress.status}`}>
                                 <div className="approval-repair-head">
                                   <div>
                                     <span>תהליך תיקון חי</span>
-                                    <strong>{repairStatusLabel(linkedRepairJob.status)}</strong>
+                                    <strong>{visibleProgress.title}</strong>
                                   </div>
-                                  <small>משימה #{linkedRepairJob.id}</small>
+                                  {visibleProgress.taskId ? <small>משימה #{visibleProgress.taskId}</small> : <small>בקשה #{request.id}</small>}
                                 </div>
                                 <div className="repair-progress-track" aria-label="שלבי התיקון">
-                                  <span className={repairStageClass(linkedRepairJob.status, 'approval')}>אישור</span>
-                                  <span className={repairStageClass(linkedRepairJob.status, 'scan')}>בדיקה</span>
-                                  <span className={repairStageClass(linkedRepairJob.status, 'work')}>תיקון</span>
-                                  <span className={repairStageClass(linkedRepairJob.status, 'done')}>סיום</span>
+                                  <span className={repairStageClass(visibleProgress.status, 'approval')}>אישור</span>
+                                  <span className={repairStageClass(visibleProgress.status, 'scan')}>בדיקה</span>
+                                  <span className={repairStageClass(visibleProgress.status, 'work')}>תיקון</span>
+                                  <span className={repairStageClass(visibleProgress.status, 'done')}>סיום</span>
                                 </div>
                                 <div className="repair-log inline-live">
-                                  {linkedRepairLogs.length === 0 ? (
+                                  {visibleProgress.logs.length === 0 ? (
                                     <small>ממתין להתחלת עבודה...</small>
-                                  ) : linkedRepairLogs.slice(0, 8).map((entry, index) => (
-                                    <small className={entry.level} key={`${linkedRepairJob.id}-inline-${index}`}>
+                                  ) : visibleProgress.logs.slice(0, 8).map((entry, index) => (
+                                    <small className={entry.level} key={`${request.id}-inline-${index}`}>
                                       {new Date(entry.at).toLocaleString('he-IL')} · {entry.text}
                                     </small>
                                   ))}
                                 </div>
-                                {linkedRepairJob.status === 'completed' && <div className="repair-complete-message">התיקון הושלם בהצלחה</div>}
+                                {visibleProgress.status === 'completed' && <div className="repair-complete-message">התיקון הושלם בהצלחה</div>}
                               </div>
                             )}
                           </article>
