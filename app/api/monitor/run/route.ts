@@ -124,7 +124,7 @@ async function checkUrl(path: string, title: string, area = "אתר הלקוחו
 
 async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
   const checks: MonitorCheck[] = [];
-  checks.push(await checkUrl("/checkout", "Checkout"));
+  checks.push(await checkUrl("/cart", "עגלה ורכישה"));
   checks.push(await checkUrl("/api/orders?account=0500000000", "Orders API", "Customer area"));
   checks.push(await checkUrl("/", "דף הבית"));
   checks.push(await checkUrl("/products?page=1", "עמוד כל הספרים"));
