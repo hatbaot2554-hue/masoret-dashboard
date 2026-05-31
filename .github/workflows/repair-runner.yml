@@ -32,7 +32,7 @@ jobs:
       REPAIR_PROMPT: ${{ inputs.prompt }}
       DASHBOARD_URL: ${{ inputs.dashboard_url }}
       AUTOMATION_API_SECRET: ${{ secrets.AUTOMATION_API_SECRET }}
-      GITHUB_REPAIR_TOKEN: ${{ secrets.GITHUB_REPAIR_TOKEN }}
+      REPAIR_GITHUB_TOKEN: ${{ secrets.REPAIR_GITHUB_TOKEN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4.1-mini' }}
       AI_REPAIR_MODE: ${{ vars.AI_REPAIR_MODE || 'branch' }}
