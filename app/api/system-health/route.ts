@@ -562,7 +562,7 @@ async function createApprovalRequestsForCriticalChecks(checks: HealthCheck[]) {
         severity: item.scope.includes("אבטחה") ? "security" : item.status === "error" ? "urgent" : "local",
         source: "system-health",
         recommendedAction: item.nextStep || item.impact || "בדיקה ותיקון בלוח הבקרה.",
-        actionKey: item.key,
+        actionKey: "approval:review_only",
         payload: item,
         fingerprint: `system-health:${item.key}:${item.status}`,
       })
