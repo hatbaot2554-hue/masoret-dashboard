@@ -28,6 +28,7 @@ function monitorPermissionMessage(payload: Record<string, unknown>) {
   const envName =
     text.includes("VERCEL_MONITOR_TOKEN") ? "VERCEL_MONITOR_TOKEN" :
     text.includes("GITHUB_MONITOR_TOKEN") ? "GITHUB_MONITOR_TOKEN" :
+    text.includes("REPAIR_GITHUB_TOKEN") ? "REPAIR_GITHUB_TOKEN" :
     text.includes("AIVEN_MONITOR_TOKEN") ? "AIVEN_MONITOR_TOKEN" :
     text.includes("RESEND_API_KEY") ? "RESEND_API_KEY" :
     text.includes("GEMINI_API_KEY") ? "GEMINI_API_KEY" :
