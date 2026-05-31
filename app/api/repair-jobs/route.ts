@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createDbPool } from '../../lib/db';
 import { createApprovalRequest } from '../../lib/approvalRequests';
-import { isDashboardRequest } from '../../lib/security';
+import { isDashboardRequest, sharedSecretAllowed } from '../../lib/security';
 
 const pool = createDbPool();
 
@@ -10,6 +10,10 @@ type RepairLog = {
   level: 'info' | 'success' | 'warning' | 'error';
   text: string;
 };
+
+function canUseRepairApi(request: Request) {
+  return isDashboardRequest(request) || sharedSecretAllowed(request, 'AUTOMATION_API_SECRET', 'x-automation-secret');
+}
 
 async function ensureRepairJobs() {
   await pool.query(`
@@ -86,7 +90,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    if (!isDashboardRequest(request)) {
+    if (!canUseRepairApi(request)) {
       return NextResponse.json({ error: 'לא מורשה' }, { status: 401 });
     }
     await ensureRepairJobs();
