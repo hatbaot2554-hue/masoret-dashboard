@@ -551,6 +551,75 @@ button:disabled {
   padding-top: 14px;
 }
 
+.repair-center textarea {
+  width: 100%;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid #dbe3ec;
+  border-radius: 8px;
+  font: inherit;
+  resize: vertical;
+  background: #fff;
+}
+
+.repair-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.repair-job-list {
+  display: grid;
+  gap: 12px;
+}
+
+.repair-job {
+  border: 1px solid #dbe3ec;
+  border-radius: 10px;
+  background: #fff;
+  padding: 14px;
+}
+
+.repair-job-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.repair-job-head span {
+  background: #fff5d6;
+  color: #8a5b00;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.repair-log {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.repair-log small {
+  display: block;
+  color: #43556a;
+}
+
+.repair-log small.warning {
+  color: #9a6500;
+}
+
+.repair-log small.error {
+  color: #b42318;
+}
+
+.repair-log small.success {
+  color: #067647;
+}
+
 .approval-box {
   border: 1px solid rgba(204, 145, 21, 0.34);
   margin: 16px 0;
@@ -654,7 +723,7 @@ button:disabled {
 .coupon-create-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 18px 0;
 }
 
