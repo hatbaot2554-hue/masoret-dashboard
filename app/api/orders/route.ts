@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createDbPool } from '../../lib/db';
 import { clientIp, genericServerError, isDashboardRequest, rateLimit, sharedSecretAllowed } from '../../lib/security';
 import { findValidCoupon, redeemCoupon } from '../../lib/coupons';
+import { ensureOrderEmailColumns, sendExternalOrderReadyEmail } from '../../lib/orderEmails';
 
 const pool = createDbPool();
 
@@ -55,6 +56,7 @@ async function ensureOrdersTable() {
       auto_submitted BOOLEAN DEFAULT FALSE,
       checkout_url TEXT,
       external_order_id TEXT,
+      external_order_email_sent_at TIMESTAMPTZ,
       status TEXT DEFAULT 'pending',
       coupon_code TEXT,
       coupon_discount NUMERIC DEFAULT 0,
@@ -79,6 +81,7 @@ async function ensureOrdersTable() {
     ADD COLUMN IF NOT EXISTS auto_submitted BOOLEAN DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS checkout_url TEXT,
     ADD COLUMN IF NOT EXISTS external_order_id TEXT,
+    ADD COLUMN IF NOT EXISTS external_order_email_sent_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
     ADD COLUMN IF NOT EXISTS coupon_code TEXT,
     ADD COLUMN IF NOT EXISTS coupon_discount NUMERIC DEFAULT 0,
@@ -101,7 +104,11 @@ export async function GET(request: Request) {
         `SELECT * FROM orders WHERE LOWER(customer_email) = LOWER($1) ORDER BY created_at DESC LIMIT 50`,
         [email]
       )
-      const order = result.rows.find(row => publicOrderId(row.id) === orderNumber)
+      const normalizedOrderNumber = orderNumber.replace(/\s/g, '')
+      const order = result.rows.find(row =>
+        publicOrderId(row.id) === normalizedOrderNumber ||
+        String(row.external_order_id || '').replace(/\s/g, '') === normalizedOrderNumber
+      )
       if (!order) {
         return NextResponse.json({ error: 'הזמנה לא נמצאה' }, { status: 404 })
       }
@@ -258,6 +265,7 @@ export async function PATCH(request: Request) {
     const values: (string | boolean)[] = []
 
     await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS admin_notes JSONB DEFAULT '[]'::jsonb`).catch(() => {})
+    await ensureOrderEmailColumns(pool).catch(() => {})
 
     if (auto_submitted !== undefined) {
       values.push(auto_submitted)
@@ -289,6 +297,12 @@ export async function PATCH(request: Request) {
       `UPDATE orders SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`,
       values
     )
+
+    if (result.rows[0]?.external_order_id) {
+      await sendExternalOrderReadyEmail(pool, result.rows[0]).catch((error) => {
+        console.error('External order email failed', error)
+      })
+    }
 
     return NextResponse.json(result.rows[0])
   } catch (e: unknown) {
