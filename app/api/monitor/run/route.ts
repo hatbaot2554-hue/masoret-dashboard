@@ -19,6 +19,7 @@ type MonitorCheck = {
 const pool = createDbPool();
 
 const WEBSITE_URL = process.env.WEBSITE_URL || "https://masoret-website.vercel.app";
+const PUBLIC_WEBSITE_URL = process.env.PUBLIC_WEBSITE_URL || "https://www.seferkodesh.co.il";
 const PRODUCTS_CATALOG_URL =
   process.env.PRODUCTS_CATALOG_URL ||
   "https://raw.githubusercontent.com/hatbaot2554-hue/masoret-automation/main/products.json";
@@ -160,9 +161,29 @@ async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
     }
 
     const data = await response.json().catch(() => null);
-    const innerChecks: Array<{ status?: string }> = Array.isArray(data?.checks) ? data.checks : [];
+    const innerChecks: Array<{ key?: string; label?: string; status?: string; detail?: string }> = Array.isArray(data?.checks)
+      ? data.checks
+      : [];
+    const activeAiProvider = innerChecks.some(
+      (item) =>
+        String(item?.key || "") === "AI_PROVIDER" &&
+        String(item?.status || "").toLowerCase() === "ok"
+    );
     const failing = innerChecks.filter((item) => String(item?.status || "") === "error");
-    const warning = innerChecks.filter((item) => ["missing", "warning", "unknown"].includes(String(item?.status || "")));
+    const warning = innerChecks.filter((item) => {
+      const key = String(item?.key || "");
+      const status = String(item?.status || "");
+      if (activeAiProvider && (key === "OPENAI_API_KEY" || key === "GEMINI_API_KEY") && status === "missing") {
+        return false;
+      }
+      return ["missing", "warning", "unknown"].includes(status);
+    });
+    const healthDetails = [...failing, ...warning].slice(0, 6).map((item) => ({
+      key: String(item?.key || "unknown"),
+      label: String(item?.label || item?.key || "Unknown check"),
+      status: String(item?.status || "unknown"),
+      detail: String(item?.detail || ""),
+    }));
     checks.push(
       monitorCheck({
         key: "website:system-health",
@@ -176,7 +197,7 @@ async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
             : "בדיקות אתר הלקוחות עברו בהצלחה.",
         recommendedAction: failing.length || warning.length ? "פתח את לשונית בריאות האתר בלוח הבקרה ובדוק את פירוט אתר הלקוחות." : undefined,
         severity: failing.length ? "urgent" : "local",
-        payload: { failing: failing.length, warning: warning.length },
+        payload: { failing: failing.length, warning: warning.length, details: healthDetails },
       })
     );
   } catch (error) {
@@ -194,6 +215,86 @@ async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
   }
 
   return dedupeMonitorChecks(checks);
+}
+
+async function checkPublicDomainRouting(): Promise<MonitorCheck[]> {
+  const checks: MonitorCheck[] = [];
+
+  let websiteHost = "";
+  let publicHost = "";
+  try {
+    websiteHost = new URL(WEBSITE_URL).host;
+    publicHost = new URL(PUBLIC_WEBSITE_URL).host;
+  } catch {
+    return checks;
+  }
+
+  if (!websiteHost || !publicHost || websiteHost === publicHost) {
+    return checks;
+  }
+
+  const routes = [
+    {
+      path: "/account",
+      key: "public-domain:account",
+      title: "Public domain account area",
+      recommendedAction:
+        "Verify that the public domain points to the active Next deployment, or add the required routing so customers can reach the personal area.",
+    },
+    {
+      path: "/api/system-health",
+      key: "public-domain:system-health",
+      title: "Public domain health endpoint",
+      recommendedAction:
+        "Verify that the public domain reaches the monitored app deployment, or expose the health endpoint through the public domain for monitoring.",
+    },
+  ] as const;
+
+  await Promise.all(
+    routes.map(async (route) => {
+      const url = `${PUBLIC_WEBSITE_URL}${route.path}`;
+      try {
+        const response = await timedFetch(url);
+        const ok = response.ok || (response.status >= 300 && response.status < 400);
+        checks.push(
+          monitorCheck({
+            key: route.key,
+            title: route.title,
+            area: "Deployment",
+            status: ok ? "ok" : response.status === 404 ? "error" : response.status >= 500 ? "error" : "warning",
+            detail: ok
+              ? `${url} responded with ${response.status}.`
+              : `${url} responded with ${response.status}, while the monitored app is configured on ${WEBSITE_URL}.`,
+            recommendedAction: ok ? undefined : route.recommendedAction,
+            severity: ok ? undefined : "urgent",
+            payload: {
+              publicUrl: url,
+              configuredWebsiteUrl: WEBSITE_URL,
+              status: response.status,
+            },
+          })
+        );
+      } catch (error) {
+        checks.push(
+          monitorCheck({
+            key: route.key,
+            title: route.title,
+            area: "Deployment",
+            status: "warning",
+            detail: error instanceof Error ? error.message : `Could not reach ${url}.`,
+            recommendedAction: route.recommendedAction,
+            severity: "local",
+            payload: {
+              publicUrl: url,
+              configuredWebsiteUrl: WEBSITE_URL,
+            },
+          })
+        );
+      }
+    })
+  );
+
+  return checks;
 }
 
 async function checkDashboardAndOperations(): Promise<MonitorCheck[]> {
@@ -952,8 +1053,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "לא מורשה" }, { status: 401 });
   }
 
-  const [website, dashboardOps, database, catalog, coupons, github, resend, gemini, openaiRepair] = await Promise.all([
+  const [website, publicDomain, dashboardOps, database, catalog, coupons, github, resend, gemini, openaiRepair] = await Promise.all([
     checkWebsiteHealth(),
+    checkPublicDomainRouting(),
     checkDashboardAndOperations(),
     checkDatabase(),
     checkCatalog(),
@@ -965,6 +1067,7 @@ export async function GET(request: Request) {
   ]);
   const checks = [
     ...website,
+    ...publicDomain,
     ...dashboardOps,
     ...database,
     ...catalog,
