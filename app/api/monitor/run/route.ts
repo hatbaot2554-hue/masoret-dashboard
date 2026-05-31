@@ -101,6 +101,8 @@ async function checkUrl(path: string, title: string, area = "אתר הלקוחו
 
 async function checkWebsiteHealth(): Promise<MonitorCheck[]> {
   const checks: MonitorCheck[] = [];
+  checks.push(await checkUrl("/checkout", "Checkout"));
+  checks.push(await checkUrl("/api/orders?account=0500000000", "Orders API", "Customer area"));
   checks.push(await checkUrl("/", "דף הבית"));
   checks.push(await checkUrl("/products?page=1", "עמוד כל הספרים"));
   checks.push(await checkUrl("/wishlist", "עמוד מועדפים"));
@@ -720,6 +722,46 @@ async function checkGemini(): Promise<MonitorCheck> {
   }
 }
 
+async function checkOpenAIRepairEngine(): Promise<MonitorCheck> {
+  if (!configured("OPENAI_API_KEY")) {
+    return monitorCheck({
+      key: "ai:openai-repair",
+      title: "OpenAI - מנוע תיקונים חכם",
+      area: "AI ותיקונים",
+      status: "warning",
+      detail: "לא מוגדר OPENAI_API_KEY בלוח הבקרה.",
+      recommendedAction: "הגדר OPENAI_API_KEY כדי שמערכת התיקונים תוכל לנתח לוגים ובעיות בעזרת AI.",
+      severity: "local",
+    });
+  }
+
+  try {
+    const response = await timedFetch("https://api.openai.com/v1/models", {
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    }, 12000);
+    return monitorCheck({
+      key: "ai:openai-repair",
+      title: "OpenAI - מנוע תיקונים חכם",
+      area: "AI ותיקונים",
+      status: response.ok ? "ok" : "warning",
+      detail: response.ok ? "OpenAI ענה בהצלחה ומוכן לניתוח תיקונים." : `OpenAI החזיר ${response.status}.`,
+      recommendedAction: response.ok ? undefined : "בדוק את מפתח OpenAI, הרשאות הפרויקט ומכסת השימוש.",
+      severity: response.ok ? undefined : "local",
+      payload: { status: response.status },
+    });
+  } catch (error) {
+    return monitorCheck({
+      key: "ai:openai-repair",
+      title: "OpenAI - מנוע תיקונים חכם",
+      area: "AI ותיקונים",
+      status: "warning",
+      detail: error instanceof Error ? error.message : "בדיקת OpenAI נכשלה.",
+      recommendedAction: "בדוק מפתח OpenAI, מכסה וחיבור לרשת.",
+      severity: "local",
+    });
+  }
+}
+
 function checkExternalAccessCoverage(): MonitorCheck[] {
   const required = [
     {
@@ -814,7 +856,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "לא מורשה" }, { status: 401 });
   }
 
-  const [website, dashboardOps, database, catalog, coupons, github, resend, gemini] = await Promise.all([
+  const [website, dashboardOps, database, catalog, coupons, github, resend, gemini, openaiRepair] = await Promise.all([
     checkWebsiteHealth(),
     checkDashboardAndOperations(),
     checkDatabase(),
@@ -823,6 +865,7 @@ export async function GET(request: Request) {
     checkGitHub(),
     checkResend(),
     checkGemini(),
+    checkOpenAIRepairEngine(),
   ]);
   const checks = [
     ...website,
@@ -833,6 +876,7 @@ export async function GET(request: Request) {
     ...github,
     resend,
     gemini,
+    openaiRepair,
     ...checkExternalAccessCoverage(),
   ];
   await createApprovalRequests(checks).catch((error) => console.error("monitor approval request creation failed", error));
