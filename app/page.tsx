@@ -373,6 +373,7 @@ function missingExternalSecret(request: ApprovalRequest) {
   if (text.includes('AIVEN_MONITOR_TOKEN')) return 'AIVEN_MONITOR_TOKEN';
   if (text.includes('RESEND_API_KEY')) return 'RESEND_API_KEY';
   if (text.includes('GEMINI_API_KEY')) return 'GEMINI_API_KEY';
+  if (text.includes('OPENAI_API_KEY')) return 'OPENAI_API_KEY';
   return '';
 }
 
