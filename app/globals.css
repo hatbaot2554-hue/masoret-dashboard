@@ -115,6 +115,27 @@ button:disabled {
   padding: 10px;
 }
 
+.orders-load-error {
+  align-items: center;
+  background: #fcf0f1;
+  border: 1px solid #f0b8bc;
+  border-right: 4px solid #d63638;
+  color: #8a2424;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+}
+
+.orders-load-error button {
+  background: #d63638;
+  border: 0;
+  color: #fff;
+  cursor: pointer;
+  padding: 8px 14px;
+}
+
 .orders-admin {
   direction: rtl;
   min-height: 100vh;
@@ -900,6 +921,16 @@ button:disabled {
   color: var(--muted);
   padding: 48px !important;
   text-align: center !important;
+}
+
+.empty-row-action {
+  background: var(--blue);
+  border: 0;
+  color: #fff;
+  cursor: pointer;
+  display: inline-block;
+  margin-inline-start: 12px;
+  padding: 8px 14px;
 }
 
 .wp-admin-shell {
