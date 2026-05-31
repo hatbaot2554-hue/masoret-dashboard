@@ -857,10 +857,24 @@ button:disabled {
   border-radius: 8px;
   color: #7a4a00;
   font-size: 13px;
-  font-weight: 800;
   grid-column: 1 / -1;
   line-height: 1.7;
   padding: 10px 12px;
+}
+
+.approval-blocker-note strong {
+  display: block;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.approval-setup-steps {
+  margin: 8px 0 0;
+  padding-inline-start: 22px;
+}
+
+.approval-setup-steps li {
+  margin: 5px 0;
 }
 
 .approval-status {
