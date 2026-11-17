@@ -31,8 +31,8 @@ export function isDashboardRequest(request: Request): boolean {
   if (!safeEqual(signature, expected)) return false;
 
   try {
-    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { exp?: number };
-    return typeof data.exp === 'number' && data.exp > Date.now();
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { exp?: number; purpose?: string };
+    return data.purpose !== 'customer' && typeof data.exp === 'number' && data.exp > Date.now();
   } catch {
     return false;
   }

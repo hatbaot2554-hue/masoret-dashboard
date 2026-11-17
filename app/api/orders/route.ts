@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { customerSession } from '../../lib/customerSession';
 import { createDbPool } from '../../lib/db';
 import { clientIp, genericServerError, isDashboardRequest, rateLimit, sharedSecretAllowed } from '../../lib/security';
 import { findValidCoupon, redeemCoupon } from '../../lib/coupons';
@@ -118,6 +119,7 @@ export async function GET(request: Request) {
     }
 
     if (account) {
+      if (!customerSession(request, account) && !isDashboardRequest(request) && !sharedSecretAllowed(request, 'DASHBOARD_ORDERS_API_SECRET', 'x-dashboard-orders-secret')) return NextResponse.json({ error: 'נדרש אימות כניסה' }, { status: 401 });
       if (!rateLimit(`account-orders:${clientIp(request)}:${account.toLowerCase()}`, 20, 10 * 60 * 1000)) {
         return NextResponse.json({ error: 'יותר מדי בקשות. נסה שוב בעוד כמה דקות.' }, { status: 429 })
       }
@@ -181,6 +183,7 @@ export async function POST(request: Request) {
       customer_address: string
       items: unknown
       total_price: number
+      shipping_price?: number
       cost_price: number
       profit: number
       payment_method: string
@@ -220,6 +223,13 @@ export async function POST(request: Request) {
       profit = Number(total_price || 0) - Number(cost_price || 0)
       notes = [notes, `קופון ${match.coupon.code}: הנחה ₪${couponDiscount}`].filter(Boolean).join(' | ')
     }
+
+    const shippingPrice = Number(body.shipping_price || 0)
+    if (!Number.isFinite(shippingPrice) || shippingPrice < 0) {
+      return NextResponse.json({ error: 'מחיר משלוח לא תקין' }, { status: 400 })
+    }
+    total_price = Number(total_price) + shippingPrice
+    profit = Number(profit) + shippingPrice
 
     const result = await pool.query(
       `INSERT INTO orders (
