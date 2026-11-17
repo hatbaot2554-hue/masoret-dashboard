@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
+import { sharedSecretAllowed } from '../../../lib/security'
 import { createDbPool } from '../../../lib/db'
 
 const pool = createDbPool()
 
 export async function POST(req: Request) {
+  if (!sharedSecretAllowed(req, 'DASHBOARD_ORDERS_API_SECRET', 'x-dashboard-orders-secret')) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { ids } = await req.json()
   if (!ids || !ids.length) {
     return NextResponse.json({ ok: true })
