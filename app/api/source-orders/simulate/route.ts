@@ -1,31 +1,8 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
+import { isDashboardRequest } from '../../../lib/security';
 import { createDbPool } from '../../../lib/db';
 
 const pool = createDbPool();
-
-function getAuthSecret(): string {
-  return process.env.DASHBOARD_AUTH_SECRET?.trim() || '';
-}
-
-function sign(value: string): string {
-  return crypto.createHmac('sha256', getAuthSecret()).update(value).digest('base64url');
-}
-
-function isDashboardRequest(request: Request): boolean {
-  if (!getAuthSecret()) return false;
-  const header = request.headers.get('authorization') || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-  const [payload, signature] = token.split('.');
-  if (!payload || !signature || sign(payload) !== signature) return false;
-
-  try {
-    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { exp?: number };
-    return typeof data.exp === 'number' && data.exp > Date.now();
-  } catch {
-    return false;
-  }
-}
 
 type OrderItem = {
   name?: string;
