@@ -20,9 +20,23 @@ function normalizedDatabaseUrl(rawUrl: string | undefined): string | undefined {
   }
 }
 
-export function createDbPool() {
-  return new Pool({
+const databaseGlobal = globalThis as typeof globalThis & { masoretDbPool?: Pool };
+
+export function createDbPool(): Pool {
+  if (databaseGlobal.masoretDbPool) return databaseGlobal.masoretDbPool;
+  // Share a small pool across route modules in each server process.
+  const pool = new Pool({
     connectionString: normalizedDatabaseUrl(process.env.DATABASE_URL),
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    max: 2,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 10000,
   });
+  pool.on('error', () => {
+    // Do not log connection details or credentials from driver errors.
+    console.error('Database idle connection failed; the pool will replace it.');
+  });
+  databaseGlobal.masoretDbPool = pool;
+  return pool;
 }
+
