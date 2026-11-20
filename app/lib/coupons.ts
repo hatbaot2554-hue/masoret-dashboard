@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+type CouponDatabase = Pick<Pool, 'query'>;
 
 export type CouponValidationInput = {
   code?: string;
@@ -28,7 +29,7 @@ export function generateCouponCode() {
   return code;
 }
 
-export async function ensureCouponsTable(pool: Pool) {
+export async function ensureCouponsTable(pool: CouponDatabase) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS coupons (
       id BIGSERIAL PRIMARY KEY,
@@ -69,8 +70,8 @@ export async function ensureCouponsTable(pool: Pool) {
   `);
 }
 
-export async function findValidCoupon(pool: Pool, input: CouponValidationInput) {
-  await ensureCouponsTable(pool);
+export async function findValidCoupon(pool: CouponDatabase, input: CouponValidationInput, options: { lock?: boolean; schemaReady?: boolean } = {}) {
+  if (!options.schemaReady) await ensureCouponsTable(pool);
   const code = normalizeCode(input.code);
   const email = normalizeEmail(input.email);
   const phone = normalizePhone(input.phone);
@@ -83,11 +84,11 @@ export async function findValidCoupon(pool: Pool, input: CouponValidationInput) 
     params.push(code);
     conditions.push(`UPPER(code) = $${params.length}`);
   }
-  if (email) {
+  if (!code && email) {
     params.push(email);
     conditions.push(`LOWER(COALESCE(owner_email, '')) = $${params.length}`);
   }
-  if (phone) {
+  if (!code && phone) {
     params.push(phone);
     conditions.push(`regexp_replace(COALESCE(owner_phone, ''), '\\D', '', 'g') = $${params.length}`);
   }
@@ -105,7 +106,7 @@ export async function findValidCoupon(pool: Pool, input: CouponValidationInput) 
       ORDER BY
         CASE WHEN UPPER(COALESCE(code, '')) = $1 THEN 0 ELSE 1 END,
         created_at DESC
-      LIMIT 1
+      LIMIT 1 ${options.lock ? 'FOR UPDATE' : ''}
     `,
     params
   );
@@ -138,8 +139,8 @@ export async function findValidCoupon(pool: Pool, input: CouponValidationInput) 
   };
 }
 
-export async function redeemCoupon(pool: Pool, couponId: number, discount: number) {
-  await ensureCouponsTable(pool);
+export async function redeemCoupon(pool: CouponDatabase, couponId: number, discount: number, schemaReady = false) {
+  if (!schemaReady) await ensureCouponsTable(pool);
   const result = await pool.query(
     `
       UPDATE coupons

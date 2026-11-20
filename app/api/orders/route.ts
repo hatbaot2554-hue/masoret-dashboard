@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { customerSession } from '../../lib/customerSession';
 import { createDbPool } from '../../lib/db';
 import { clientIp, genericServerError, isDashboardRequest, rateLimit, sharedSecretAllowed } from '../../lib/security';
-import { findValidCoupon, redeemCoupon } from '../../lib/coupons';
+import { ensureCouponsTable, findValidCoupon, redeemCoupon } from '../../lib/coupons';
 import { ensureOrderEmailColumns, sendExternalOrderReadyEmail } from '../../lib/orderEmails';
 
 const pool = createDbPool();
@@ -201,37 +201,44 @@ export async function POST(request: Request) {
     let profit = body.profit
     let notes = body.notes
 
-    await ensureOrdersTable().catch((error) => {
-      console.error('Could not ensure orders table before insert', error)
-    })
+    const shippingPrice = Number(body.shipping_price || 0)
+    if (![Number(total_price), Number(cost_price || 0), shippingPrice].every(value => Number.isFinite(value) && value >= 0)) {
+      return NextResponse.json({ error: 'סכומי ההזמנה אינם תקינים' }, { status: 400 })
+    }
+    await ensureOrdersTable()
 
     const couponCode = body.coupon?.code ? String(body.coupon.code).trim().toUpperCase() : ''
+    if (couponCode) await ensureCouponsTable(pool)
+    const client = await pool.connect()
+    try {
+    await client.query('BEGIN')
     let couponDiscount = 0
     if (couponCode) {
-      const match = await findValidCoupon(pool, {
+      const match = await findValidCoupon(client, {
         code: couponCode,
         email: customer_email,
         phone: customer_phone,
         subtotal: Number(total_price || 0),
-      })
+      }, { lock: true, schemaReady: true })
       if (!match) {
+        await client.query('ROLLBACK')
         return NextResponse.json({ error: 'הקופון לא תקין או שכבר נוצל' }, { status: 400 })
       }
       couponDiscount = match.discount
-      await redeemCoupon(pool, Number(match.coupon.id), couponDiscount)
+      const redeemed = await redeemCoupon(client, Number(match.coupon.id), couponDiscount, true)
+      if (!redeemed) {
+        await client.query('ROLLBACK')
+        return NextResponse.json({ error: 'הקופון כבר נוצל. יש לרענן את הסל.' }, { status: 409 })
+      }
       total_price = Math.max(0, Number(total_price || 0) - couponDiscount)
       profit = Number(total_price || 0) - Number(cost_price || 0)
       notes = [notes, `קופון ${match.coupon.code}: הנחה ₪${couponDiscount}`].filter(Boolean).join(' | ')
     }
 
-    const shippingPrice = Number(body.shipping_price || 0)
-    if (!Number.isFinite(shippingPrice) || shippingPrice < 0) {
-      return NextResponse.json({ error: 'מחיר משלוח לא תקין' }, { status: 400 })
-    }
     total_price = Number(total_price) + shippingPrice
-    profit = Number(profit) + shippingPrice
+    profit = total_price - Number(cost_price || 0)
 
-    const result = await pool.query(
+    const result = await client.query(
       `INSERT INTO orders (
         customer_name, customer_phone, customer_email, customer_address,
         items, total_price, cost_price, profit, payment_method,
@@ -244,7 +251,14 @@ export async function POST(request: Request) {
         false, 'pending', couponCode || null, couponDiscount
       ]
     )
+    await client.query('COMMIT')
     return NextResponse.json(result.rows[0])
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
   } catch (e: unknown) {
     return genericServerError(e)
   }
