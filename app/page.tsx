@@ -629,9 +629,9 @@ function orderSourceParts(order: Order) {
 }
 
 function matchProduct(item: OrderItem, products: ProductRecord[]) {
-  const index = Number(item.sourceProductIndex);
-  if (Number.isInteger(index) && products[index]) return products[index];
-  const ids = [item.sourceProductId, item.productId, item.variationId, item.sku].filter(Boolean).map(String);
+  const sourceId = item.sourceProductId || item.productId;
+  if (sourceId) return products.find(product => String(product.product_id) === String(sourceId));
+  const ids = [item.variationId, item.sku].filter(Boolean).map(String);
   return products.find((product) =>
     ids.includes(String(product.product_id || '')) ||
     ids.includes(String(product.sku || '')) ||
@@ -661,16 +661,16 @@ function sourceLabel(order: Order) {
 }
 
 function productUrl(item: OrderItem) {
-  const index = Number(item.sourceProductIndex);
-  if (Number.isInteger(index) && index >= 0) {
-    return `${PRODUCT_SITE_URL}/products/${index}`;
+  const sourceId = item.sourceProductId || item.productId;
+  if (sourceId) {
+    return `${PRODUCT_SITE_URL}/products/source/${encodeURIComponent(String(sourceId))}`;
   }
 
   const directUrl = item.url || item.sourceUrl || item.source_url;
   if (directUrl) {
     try {
       const url = new URL(String(directUrl), PRODUCT_SITE_URL);
-      if (url.hostname === new URL(PRODUCT_SITE_URL).hostname && url.pathname.startsWith('/products')) {
+      if (url.hostname === new URL(PRODUCT_SITE_URL).hostname && url.pathname.startsWith('/products/source/')) {
         return url.toString();
       }
     } catch {
@@ -678,10 +678,6 @@ function productUrl(item: OrderItem) {
     }
   }
 
-  const sourceId = item.sourceProductId || item.productId || item.variationId || item.sku;
-  if (sourceId) {
-    return `${PRODUCT_SITE_URL}/products/source/${encodeURIComponent(String(sourceId))}`;
-  }
   return `${PRODUCT_SITE_URL}/products?search=${encodeURIComponent(item.name || '')}`;
 }
 
