@@ -1,0 +1,16 @@
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const ts = require('typescript');
+const source = fs.readFileSync('app/page.tsx', 'utf8');
+const match = source.slice(source.indexOf('function matchProduct('), source.indexOf('function dateHe('));
+const link = source.slice(source.indexOf('function productUrl('), source.indexOf('function openProduct('));
+const context = vm.createContext({ URL, PRODUCT_SITE_URL: 'https://masoret-website.vercel.app' });
+vm.runInContext(ts.transpileModule(match + link, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, context);
+const products = [{ product_id: '10', sku: '20' }, { product_id: '20', sku: 'B' }];
+assert.equal(context.matchProduct({ sourceProductId: '20', sourceProductIndex: 0 }, products), products[1]);
+assert.equal(context.matchProduct({ sku: '20' }, products), products[0]);
+assert.equal(context.matchProduct({ sourceProductId: 'missing', sourceProductIndex: 0 }, products), undefined);
+assert.equal(context.productUrl({ sourceProductId: '20', sourceProductIndex: 0 }), 'https://masoret-website.vercel.app/products/source/20');
+assert.equal(context.productUrl({ sourceProductIndex: null, name: 'Old' }), 'https://masoret-website.vercel.app/products?search=Old');
+console.log('PASS dashboard identity precedence, SKU namespaces, missing identity and null index');

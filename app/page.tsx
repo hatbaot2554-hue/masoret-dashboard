@@ -38,6 +38,7 @@ type AdminNote = {
 type ProductRecord = {
   index: number;
   product_id?: string;
+  source_product_id?: string;
   sku?: string;
   name?: string;
   image?: string;
@@ -630,12 +631,12 @@ function orderSourceParts(order: Order) {
 
 function matchProduct(item: OrderItem, products: ProductRecord[]) {
   const sourceId = item.sourceProductId || item.productId;
-  if (sourceId) return products.find(product => String(product.product_id) === String(sourceId));
-  const ids = [item.variationId, item.sku].filter(Boolean).map(String);
+  if (sourceId) return products.find(product => String(product.source_product_id || product.product_id) === String(sourceId));
   return products.find((product) =>
-    ids.includes(String(product.product_id || '')) ||
-    ids.includes(String(product.sku || '')) ||
-    product.variations?.some((variation) => ids.includes(String(variation.variation_id || '')) || ids.includes(String(variation.sku || '')))
+    (item.sku && String(product.sku || '') === String(item.sku)) ||
+    product.variations?.some((variation) =>
+      (item.variationId && String(variation.variation_id || '') === String(item.variationId)) ||
+      (item.sku && String(variation.sku || '') === String(item.sku)))
   );
 }
 
