@@ -2352,8 +2352,8 @@ export default function Dashboard() {
                               {file?.name && (
                                 <div className="addon-fields">
                                   <strong>קובץ שהלקוח העלה</strong>
-                                  {file.dataUrl ? (
-                                    <a href={file.dataUrl} download={file.name} target="_blank" rel="noopener noreferrer">{file.name}</a>
+                                  {file.dataUrl && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+=*$/.test(file.dataUrl) ? (
+                                    <a href={file.dataUrl} download={file.name} rel="noopener noreferrer">{file.name}</a>
                                   ) : (
                                     <span>{file.name}</span>
                                   )}

@@ -32,7 +32,16 @@ const statusLabels: Record<string, string> = {
 function publicOrder(row: Record<string, unknown>) {
   const status = String(row.status || 'pending');
   return {
-    ...row,
+    id: row.id,
+    created_at: row.created_at,
+    external_order_id: row.external_order_id,
+    total_price: row.total_price,
+    payment_method: row.payment_method,
+    status,
+    items: (Array.isArray(row.items) ? row.items : []).map((item: Record<string, unknown>) => ({
+      name: item.name, quantity: item.quantity, price: item.price, image: item.image,
+      sourceProductId: item.sourceProductId, variationId: item.variationId,
+    })),
     our_order_id: publicOrderId(row.id),
     date: new Date(String(row.created_at)).toLocaleDateString('he-IL'),
     status_he: statusLabels[status] || 'הזמנה בתהליך',
@@ -105,6 +114,7 @@ export async function GET(request: Request) {
     const account = searchParams.get('account')?.trim()
 
     if (orderNumber && email) {
+      if (!customerSession(request, email) && !isDashboardRequest(request)) return NextResponse.json({ error: 'יש להתחבר לחשבון באמצעות קוד האימות לפני צפייה בהזמנה.' }, { status: 401 });
       const result = await pool.query(
         `SELECT * FROM orders WHERE LOWER(customer_email) = LOWER($1) ORDER BY created_at DESC LIMIT 50`,
         [email]
@@ -123,7 +133,7 @@ export async function GET(request: Request) {
     }
 
     if (account) {
-      if (!customerSession(request, account) && !isDashboardRequest(request) && !sharedSecretAllowed(request, 'DASHBOARD_ORDERS_API_SECRET', 'x-dashboard-orders-secret')) return NextResponse.json({ error: 'נדרש אימות כניסה' }, { status: 401 });
+      if (!customerSession(request, account) && !isDashboardRequest(request)) return NextResponse.json({ error: 'נדרש אימות כניסה' }, { status: 401 });
       if (!rateLimit(`account-orders:${clientIp(request)}:${account.toLowerCase()}`, 20, 10 * 60 * 1000)) {
         return NextResponse.json({ error: 'יותר מדי בקשות. נסה שוב בעוד כמה דקות.' }, { status: 429 })
       }
