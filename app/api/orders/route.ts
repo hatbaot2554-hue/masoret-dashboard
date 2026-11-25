@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
+import { sharedRateLimit } from '../../lib/sharedRateLimit';
 import { customerSession } from '../../lib/customerSession';
 import { createDbPool } from '../../lib/db';
 import { clientIp, genericServerError, isDashboardRequest, rateLimit, sharedSecretAllowed } from '../../lib/security';
@@ -89,6 +91,8 @@ async function ensureOrdersTable() {
     ADD COLUMN IF NOT EXISTS admin_notes JSONB DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()
   `)
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS idempotency_key TEXT, ADD COLUMN IF NOT EXISTS request_hash TEXT`)
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS orders_idempotency_key_unique ON orders(idempotency_key)`)
 }
 
 export async function GET(request: Request) {
@@ -173,7 +177,7 @@ export async function POST(request: Request) {
     if (!sharedSecretAllowed(request, 'DASHBOARD_ORDERS_API_SECRET', 'x-dashboard-orders-secret')) {
       return NextResponse.json({ error: 'לא מורשה' }, { status: 401 })
     }
-    if (!rateLimit(`create-order:${clientIp(request)}`, 40, 10 * 60 * 1000)) {
+    if (!await sharedRateLimit(`create-order:${clientIp(request)}`, 100, 10 * 60 * 1000)) {
       return NextResponse.json({ error: 'יותר מדי בקשות. נסה שוב בעוד כמה דקות.' }, { status: 429 })
     }
     const body = await request.json() as {
@@ -192,6 +196,9 @@ export async function POST(request: Request) {
       utm_source: string
       coupon?: { code?: string; id?: number; discount?: number }
     }
+    const requestKey = request.headers.get('idempotency-key');
+    if (!requestKey || !/^[a-f0-9-]{36}$/i.test(requestKey)) return NextResponse.json({ error: 'חסר מזהה בקשה תקין' }, { status: 400 });
+    const requestHash = crypto.createHash('sha256').update(JSON.stringify(body)).digest('hex');
 
     const {
       customer_name, customer_phone, customer_email, customer_address,
@@ -212,6 +219,13 @@ export async function POST(request: Request) {
     const client = await pool.connect()
     try {
     await client.query('BEGIN')
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [requestKey])
+    const existing = await client.query('SELECT * FROM orders WHERE idempotency_key = $1', [requestKey])
+    if (existing.rows.length) {
+      await client.query('COMMIT')
+      if (existing.rows[0].request_hash !== requestHash) return NextResponse.json({ error: 'הבקשה השתנתה. יש לרענן ולשלוח מחדש.' }, { status: 409 })
+      return NextResponse.json(existing.rows[0])
+    }
     let couponDiscount = 0
     if (couponCode) {
       const match = await findValidCoupon(client, {
@@ -242,13 +256,13 @@ export async function POST(request: Request) {
       `INSERT INTO orders (
         customer_name, customer_phone, customer_email, customer_address,
         items, total_price, cost_price, profit, payment_method,
-        notes, source, utm_source, auto_submitted, status, coupon_code, coupon_discount
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        notes, source, utm_source, auto_submitted, status, coupon_code, coupon_discount, idempotency_key, request_hash
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
       [
         customer_name, customer_phone, customer_email, customer_address,
         JSON.stringify(items), total_price, cost_price || 0, profit || 0,
         payment_method, notes, source || 'direct', utm_source || '',
-        false, 'pending', couponCode || null, couponDiscount
+        false, 'pending', couponCode || null, couponDiscount, requestKey, requestHash
       ]
     )
     await client.query('COMMIT')
